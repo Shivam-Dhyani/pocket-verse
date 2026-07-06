@@ -36,6 +36,28 @@ describe('logger redaction', () => {
     expect(output).not.toContain('1BQANOTAREALSESSION');
   });
 
+  it('redacts connection-flow secrets and PII', () => {
+    const { logger, lines } = captureLogger();
+
+    logger.info({
+      connect: {
+        phone: '+14155552671',
+        phoneCodeHash: 'raw-code-hash',
+        tempSession: 'raw-temp-session',
+        stringSession: 'raw-string-session',
+        wrappedDataKey: 'v1.k1.aaa.bbb.ccc',
+      },
+    });
+    logger.flush?.();
+
+    const output = lines.join('');
+    expect(output).not.toContain('+14155552671');
+    expect(output).not.toContain('raw-code-hash');
+    expect(output).not.toContain('raw-temp-session');
+    expect(output).not.toContain('raw-string-session');
+    expect(output).not.toContain('v1.k1.aaa.bbb.ccc');
+  });
+
   it('redacts authorization and cookie headers on req objects', () => {
     const { logger, lines } = captureLogger();
 

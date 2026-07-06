@@ -29,5 +29,18 @@ export function createRateLimiters(nodeEnv: string) {
         },
       },
     }),
+    // OTP sends are expensive for the user's account (flood limits, abuse).
+    connection: rateLimit({
+      windowMs: FIFTEEN_MINUTES,
+      limit: testing ? 100_000 : 15,
+      standardHeaders: 'draft-7',
+      legacyHeaders: false,
+      message: {
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Too many connection attempts. Wait a few minutes and try again.',
+        },
+      },
+    }),
   };
 }

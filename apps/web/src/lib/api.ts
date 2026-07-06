@@ -22,7 +22,7 @@ interface RequestOptions {
   _retried?: boolean;
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { accessToken } = useAuthStore.getState();
 
   const res = await fetch(`${API_URL}${path}`, {

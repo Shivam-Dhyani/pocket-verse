@@ -10,6 +10,8 @@ export class AppError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    /** Safe, client-facing extras (e.g. retryAfterSeconds) — never internals. */
+    readonly meta?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'AppError';
@@ -23,7 +25,9 @@ export function notFoundHandler(_req: Request, res: Response): void {
 export function createErrorHandler(logger: Logger) {
   return (error: unknown, _req: Request, res: Response, _next: NextFunction): void => {
     if (error instanceof AppError) {
-      res.status(error.status).json({ error: { code: error.code, message: error.message } });
+      res.status(error.status).json({
+        error: { code: error.code, message: error.message, ...(error.meta ?? {}) },
+      });
       return;
     }
 

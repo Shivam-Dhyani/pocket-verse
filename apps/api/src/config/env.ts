@@ -12,6 +12,8 @@ const envSchema = z.object({
   MASTER_KEYS: z.string().min(1),
   MASTER_KEY_ACTIVE: z.string().min(1),
   CORS_ORIGIN: z.string().url().default('http://localhost:3000'),
+  TELEGRAM_API_ID: z.coerce.number().int().positive(),
+  TELEGRAM_API_HASH: z.string().min(16),
 });
 
 export type Env = z.infer<typeof envSchema>;

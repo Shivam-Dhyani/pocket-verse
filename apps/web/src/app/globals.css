@@ -203,3 +203,34 @@ a:hover {
   border: 1px solid var(--pv-border);
   color: var(--pv-text);
 }
+
+.pv-disclosure {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--pv-text-muted);
+  font-size: 0.9rem;
+  display: grid;
+  gap: 10px;
+}
+
+.pv-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: 1px solid var(--pv-border);
+  color: var(--pv-text-muted);
+  margin-bottom: 16px;
+}
+
+.pv-badge--ok {
+  color: var(--pv-success);
+  border-color: rgba(74, 222, 128, 0.35);
+}
+
+.pv-badge--warn {
+  color: var(--pv-danger);
+  border-color: rgba(248, 113, 113, 0.35);
+}

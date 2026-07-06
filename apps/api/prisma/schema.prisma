@@ -8,12 +8,62 @@ datasource db {
 }
 
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
+  id            String             @id @default(cuid())
+  email         String             @unique
   passwordHash  String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
   refreshTokens RefreshToken[]
+  connection    StorageConnection?
+  auditEvents   AuditEvent[]
+}
+
+enum ConnectionStatus {
+  PENDING_CODE
+  PENDING_PASSWORD
+  CONNECTED
+  ERROR
+}
+
+model StorageConnection {
+  id     String           @id @default(cuid())
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String           @unique
+  status ConnectionStatus
+
+  // Display-only masked phone (e.g. "+91••••••1234"); the full number lives
+  // only inside the encrypted pending blob during login.
+  phoneMasked String
+
+  // Envelope encryption: per-connection data key wrapped by the master keyring
+  // (AAD-bound to the user). The session string is encrypted with the data key.
+  wrappedDataKey   String
+  encryptedSession String?
+
+  // Multi-step login state: encrypted JSON {tempSession, phoneCodeHash, phone},
+  // valid until pendingExpiresAt. Survives server restarts/sleeps.
+  encryptedPending String?
+  pendingExpiresAt DateTime?
+
+  // Private storage channel created for the user (ids are Telegram bigints).
+  channelId         String?
+  channelAccessHash String?
+
+  lastCheckedAt DateTime?
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  type      String
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model RefreshToken {

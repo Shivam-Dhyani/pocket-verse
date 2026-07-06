@@ -1,9 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { api } from '@/lib/api';
+import { connectionApi } from '@/lib/connection';
 import { useAuthStore } from '@/stores/auth';
 
 /**
@@ -24,6 +26,13 @@ export default function DrivePage() {
       return api.me();
     },
     retry: false,
+  });
+
+  const connection = useQuery({
+    queryKey: ['connection'],
+    queryFn: connectionApi.status,
+    retry: false,
+    enabled: me.isSuccess,
   });
 
   useEffect(() => {
@@ -50,15 +59,36 @@ export default function DrivePage() {
     return null;
   }
 
+  const conn = connection.data?.connection;
+
   return (
     <main className="pv-shell">
       <span className="pv-brand">Pocketverse</span>
       <div className="pv-card">
         <h1>Your drive</h1>
+
+        {conn?.status === 'connected' ? (
+          <span className="pv-badge pv-badge--ok">● Storage connected — {conn.phoneMasked}</span>
+        ) : conn?.status === 'error' ? (
+          <span className="pv-badge pv-badge--warn">● Storage connection needs attention</span>
+        ) : (
+          <span className="pv-badge">○ Storage not connected</span>
+        )}
+
         <p className="pv-sub">
-          Signed in as {user?.email ?? me.data.user.email}. File storage arrives in the next phase —
-          your account and encrypted session handling are live.
+          Signed in as {user?.email ?? me.data.user.email}.{' '}
+          {conn?.status === 'connected'
+            ? 'File storage arrives in the next phase — your encrypted connection is live.'
+            : 'Connect your own storage to give your files a home.'}
         </p>
+
+        {conn?.status !== 'connected' && (
+          <Link href="/connect">
+            <button className="pv-button" type="button">
+              Connect storage
+            </button>
+          </Link>
+        )}
         <button className="pv-button pv-button--ghost" type="button" onClick={signOut}>
           Sign out
         </button>

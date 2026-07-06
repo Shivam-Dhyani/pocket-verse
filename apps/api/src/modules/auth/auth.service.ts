@@ -5,6 +5,7 @@ import type { UserDto } from '@pocketverse/shared';
 import { REFRESH_TOKEN_TTL_DAYS } from '../../config/env.js';
 import type { JwtHelpers } from '../../lib/jwt.js';
 import { AppError } from '../../middleware/errors.js';
+import { AuditEventTypes, type AuditService } from '../audit/audit.service.js';
 
 const ARGON2_OPTIONS: argon2.Options = {
   type: argon2.argon2id,
@@ -25,6 +26,7 @@ export interface AuthResult extends IssuedTokens {
 export interface AuthServiceDeps {
   prisma: PrismaClient;
   jwt: JwtHelpers;
+  audit?: AuditService;
 }
 
 const invalidCredentials = () =>
@@ -33,7 +35,7 @@ const invalidCredentials = () =>
 const invalidRefresh = () =>
   new AppError(401, 'UNAUTHENTICATED', 'Session expired — sign in again');
 
-export function createAuthService({ prisma, jwt }: AuthServiceDeps) {
+export function createAuthService({ prisma, jwt, audit }: AuthServiceDeps) {
   async function issueTokens(user: User): Promise<AuthResult> {
     const raw = randomBytes(48).toString('base64url');
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -58,6 +60,7 @@ export function createAuthService({ prisma, jwt }: AuthServiceDeps) {
 
       const passwordHash = await argon2.hash(password, ARGON2_OPTIONS);
       const user = await prisma.user.create({ data: { email, passwordHash } });
+      await audit?.record(user.id, AuditEventTypes.AUTH_REGISTER);
       return issueTokens(user);
     },
 
@@ -71,6 +74,7 @@ export function createAuthService({ prisma, jwt }: AuthServiceDeps) {
       if (!valid) {
         throw invalidCredentials();
       }
+      await audit?.record(user.id, AuditEventTypes.AUTH_LOGIN);
       return issueTokens(user);
     },
 

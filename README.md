@@ -7,7 +7,7 @@ private cloud storage account. Your files never sit on our servers; we hold only
 metadata and connection credentials, and we're honest with you about exactly what we can and
 cannot see.
 
-**Status:** Phase 1 of 5 — foundation, encryption core, and user accounts. 🚧 Built in public.
+**Status:** Phase 2 of 5 — storage connection with encrypted sessions. 🚧 Built in public.
 
 ## Monorepo layout
 
@@ -32,6 +32,20 @@ packages/shared Zod schemas and types shared by both
   enforced by tests (`apps/api/src/lib/logger.test.ts`).
 - No secrets in git — everything comes from env (`.env.example` documents each variable).
 
+## Storage connection (Phase 2)
+
+- **MTProto user client (GramJS)** behind a `TelegramGateway` interface
+  (`apps/api/src/lib/telegram/`): phone → OTP → optional 2FA login, then a private
+  "Pocketverse Storage" channel is created in the user's account.
+- **Restart-safe login:** the multi-step flow survives server sleeps — intermediate state is an
+  encrypted blob in Postgres (10-minute TTL), never a live object in RAM.
+- **Session strings** are envelope-encrypted per connection (AAD-bound to the user), redacted
+  from logs, and never serialized into any API response — enforced by tests.
+- **FLOOD_WAIT handling:** short waits are absorbed with retry; long ones surface as honest
+  429s with `retryAfterSeconds`. Per-user mutex serializes all storage operations.
+- **Design record:** [ADR-0001](docs/adr/0001-session-key-encryption.md) — why sessions use a
+  server-side master keyring (and why password-derived keys are a v2 opt-in, not the default).
+
 ## Local development
 
 Requirements: Node ≥ 22, pnpm ≥ 10, and Postgres (any local instance or a free
@@ -39,10 +53,12 @@ Requirements: Node ≥ 22, pnpm ≥ 10, and Postgres (any local instance or a fr
 
 ```bash
 pnpm install
-cp .env.example .env        # fill in DATABASE_URL, JWT_SECRET, MASTER_KEYS
+cp .env.example .env        # fill in DATABASE_URL, JWT_SECRET, MASTER_KEYS, TELEGRAM_API_*
 # generate secrets:
 #   openssl rand -base64 48                                        → JWT_SECRET
 #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"  → MASTER_KEYS value
+# TELEGRAM_API_ID / TELEGRAM_API_HASH: create once at https://my.telegram.org
+# (API development tools) — they identify the app, not any user account.
 
 pnpm --filter @pocketverse/api prisma:migrate   # create tables
 pnpm build                                       # builds shared → api → web
@@ -60,12 +76,21 @@ pnpm build       # shared (tsc), api (tsc), web (next build)
 
 CI (GitHub Actions) runs all four on every PR. Husky + lint-staged keep commits clean locally.
 
+### Manually verifying the storage connection
+
+The connection flow talks to real Telegram servers, so CI covers it with a fake gateway; verify
+the real thing locally: run `pnpm dev`, register at `http://localhost:3000/register`, open
+`/connect`, enter your phone in international format, then the code Telegram sends you (and your
+2FA password if enabled). A private "Pocketverse Storage" channel appears in your account and
+`/drive` shows the connection badge. `DELETE /api/connection` (or a later UI control) disconnects
+and invalidates the session remotely — the channel and its contents stay in your account.
+
 ## Roadmap
 
 | Phase | Scope                                                               | Status         |
 | ----- | ------------------------------------------------------------------- | -------------- |
-| 1     | Monorepo, encryption core, user auth                                | ✅ this branch |
-| 2     | Storage connection (private channel, encrypted sessions, ADR)       | ⏳             |
+| 1     | Monorepo, encryption core, user auth                                | ✅             |
+| 2     | Storage connection (private channel, encrypted sessions, ADR)       | ✅ this branch |
 | 3     | Streaming upload/download engine, chunking, folder CRUD             | ⏳             |
 | 4     | Drive UI — design system, browser, honest onboarding, security page | ⏳             |
 | 5     | Hardening, deploy (Vercel + Render/Koyeb + Neon + Upstash), runbook | ⏳             |
