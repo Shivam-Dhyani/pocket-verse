@@ -1,0 +1,205 @@
+/*
+ * Pocketverse base design tokens — deep-space calm, dark-mode-first.
+ * The full design system lands in Phase 4; these tokens are its foundation.
+ */
+:root {
+  /* surfaces */
+  --pv-bg: #070b16;
+  --pv-surface: #0d1424;
+  --pv-surface-raised: #131c31;
+  --pv-border: rgba(148, 163, 216, 0.14);
+
+  /* text */
+  --pv-text: #e6eaf6;
+  --pv-text-muted: #8b93ad;
+
+  /* nebula accents: indigo → violet → teal */
+  --pv-accent: #6d6af8;
+  --pv-accent-violet: #9d6af8;
+  --pv-accent-teal: #4fd1c5;
+  --pv-gradient: linear-gradient(120deg, #6d6af8, #9d6af8 55%, #4fd1c5);
+
+  /* states */
+  --pv-danger: #f87171;
+  --pv-success: #4ade80;
+
+  /* shape & motion */
+  --pv-radius: 12px;
+  --pv-transition: 200ms ease;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--pv-bg);
+  color: var(--pv-text);
+  font-family:
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--pv-accent-teal);
+  text-decoration: none;
+  transition: color var(--pv-transition);
+}
+
+a:hover {
+  color: var(--pv-text);
+}
+
+.pv-shell {
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 12vh 24px 48px;
+}
+
+.pv-brand {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: var(--pv-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.pv-card {
+  background: var(--pv-surface);
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius);
+  padding: 32px;
+  margin-top: 24px;
+}
+
+.pv-card h1 {
+  font-size: 1.35rem;
+  margin: 0 0 4px;
+}
+
+.pv-card .pv-sub {
+  color: var(--pv-text-muted);
+  font-size: 0.9rem;
+  margin: 0 0 24px;
+}
+
+.pv-field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.pv-field span {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--pv-text-muted);
+  margin-bottom: 6px;
+}
+
+.pv-field input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--pv-border);
+  background: var(--pv-surface-raised);
+  color: var(--pv-text);
+  font: inherit;
+  transition: border-color var(--pv-transition);
+}
+
+.pv-field input:focus {
+  outline: none;
+  border-color: var(--pv-accent);
+}
+
+.pv-button {
+  width: 100%;
+  padding: 11px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--pv-gradient);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--pv-transition);
+}
+
+.pv-button:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.pv-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.pv-error {
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: var(--pv-danger);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  margin-bottom: 16px;
+}
+
+.pv-footnote {
+  margin-top: 20px;
+  font-size: 0.88rem;
+  color: var(--pv-text-muted);
+  text-align: center;
+}
+
+.pv-hero {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 18vh 24px 48px;
+  text-align: center;
+}
+
+.pv-hero h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.15;
+  margin: 16px 0 12px;
+}
+
+.pv-hero p {
+  color: var(--pv-text-muted);
+  font-size: 1.05rem;
+  margin: 0 auto 32px;
+  max-width: 46ch;
+}
+
+.pv-hero-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.pv-hero-actions .pv-button {
+  width: auto;
+  padding-inline: 28px;
+}
+
+.pv-button--ghost {
+  background: transparent;
+  border: 1px solid var(--pv-border);
+  color: var(--pv-text);
+}

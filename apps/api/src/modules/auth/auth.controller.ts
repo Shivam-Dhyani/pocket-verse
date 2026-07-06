@@ -1,0 +1,76 @@
+import type { CookieOptions, Request, Response } from 'express';
+import type { LoginInput, RegisterInput } from '@pocketverse/shared';
+import type { AuthService, IssuedTokens } from './auth.service.js';
+
+export const REFRESH_COOKIE = 'pv_refresh';
+
+export interface AuthControllerDeps {
+  service: AuthService;
+  secureCookies: boolean;
+}
+
+export function createAuthController({ service, secureCookies }: AuthControllerDeps) {
+  const cookieOptions = (expiresAt: Date): CookieOptions => ({
+    httpOnly: true,
+    secure: secureCookies,
+    sameSite: 'strict',
+    path: '/api/auth',
+    expires: expiresAt,
+  });
+
+  function setRefreshCookie(res: Response, tokens: IssuedTokens): void {
+    res.cookie(
+      REFRESH_COOKIE,
+      tokens.refreshToken.raw,
+      cookieOptions(tokens.refreshToken.expiresAt),
+    );
+  }
+
+  function clearRefreshCookie(res: Response): void {
+    res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+  }
+
+  return {
+    async register(req: Request, res: Response): Promise<void> {
+      const { email, password } = req.body as RegisterInput;
+      const result = await service.register(email, password);
+      setRefreshCookie(res, result);
+      res.status(201).json({ user: result.user, accessToken: result.accessToken });
+    },
+
+    async login(req: Request, res: Response): Promise<void> {
+      const { email, password } = req.body as LoginInput;
+      const result = await service.login(email, password);
+      setRefreshCookie(res, result);
+      res.json({ user: result.user, accessToken: result.accessToken });
+    },
+
+    async refresh(req: Request, res: Response): Promise<void> {
+      const raw = (req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE];
+      if (!raw) {
+        res
+          .status(401)
+          .json({ error: { code: 'UNAUTHENTICATED', message: 'Session expired — sign in again' } });
+        return;
+      }
+      const result = await service.refresh(raw);
+      setRefreshCookie(res, result);
+      res.json({ user: result.user, accessToken: result.accessToken });
+    },
+
+    async logout(req: Request, res: Response): Promise<void> {
+      const raw = (req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE];
+      if (raw) {
+        await service.logout(raw);
+      }
+      clearRefreshCookie(res);
+      res.status(204).end();
+    },
+
+    async me(req: Request, res: Response): Promise<void> {
+      // requireAuth guarantees req.user.
+      const user = await service.getUser(req.user!.id);
+      res.json({ user });
+    },
+  };
+}

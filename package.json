@@ -1,0 +1,49 @@
+{
+  "name": "pocketverse",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A whole universe in your pocket — a Drive-style interface over storage you control.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "eslint": "^9.20.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.4.3",
+    "prettier": "^3.5.0",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.0"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs,cjs}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml,css}": [
+      "prettier --write"
+    ]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "argon2",
+      "prisma",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}
