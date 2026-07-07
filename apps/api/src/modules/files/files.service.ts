@@ -280,11 +280,14 @@ export function createFilesService({
     },
 
     async getFile(userId: string, fileId: string): Promise<FileDto> {
-      const file = await prisma.file.findUnique({ where: { id: fileId } });
+      const file = await prisma.file.findUnique({
+        where: { id: fileId },
+        include: { chunks: { select: { size: true, status: true, progress: true } } },
+      });
       if (!file || file.ownerId !== userId) {
         throw notFound();
       }
-      return toFileDto(file);
+      return toFileDto(file, file.chunks);
     },
 
     /**
@@ -385,7 +388,13 @@ export function createFilesService({
 
 export type FilesService = ReturnType<typeof createFilesService>;
 
-export function toFileDto(file: FileRow): FileDto {
+export interface ChunkProgressInfo {
+  size: bigint;
+  status: 'PENDING' | 'UPLOADING' | 'UPLOADED' | 'ERROR';
+  progress: number;
+}
+
+export function toFileDto(file: FileRow, chunks?: ChunkProgressInfo[]): FileDto {
   const statusMap = { UPLOADING: 'uploading', READY: 'ready', ERROR: 'error' } as const;
   return {
     id: file.id,
@@ -395,9 +404,23 @@ export function toFileDto(file: FileRow): FileDto {
     status: statusMap[file.status],
     checksum: file.checksum,
     folderId: file.folderId,
+    syncProgress: computeSyncProgress(file, chunks),
     createdAt: file.createdAt.toISOString(),
     updatedAt: file.updatedAt.toISOString(),
   };
+}
+
+/** Weighted percentage of bytes already safe in storage (uploading files only). */
+function computeSyncProgress(file: FileRow, chunks?: ChunkProgressInfo[]): number | null {
+  if (file.status !== 'UPLOADING' || !chunks || chunks.length === 0 || file.size === 0n) {
+    return null;
+  }
+  let syncedBytes = 0;
+  for (const chunk of chunks) {
+    const size = Number(chunk.size);
+    syncedBytes += chunk.status === 'UPLOADED' ? size : (size * chunk.progress) / 100;
+  }
+  return Math.min(100, Math.round((syncedBytes / Number(file.size)) * 100));
 }
 
 function toUploadDto(session: UploadSession, file: FileRow): UploadSessionDto {

@@ -1,14 +1,65 @@
 import { once } from 'node:events';
-import { Router, type Request, type Response } from 'express';
+import { Router, type Request, type RequestHandler, type Response } from 'express';
 import { createUploadSchema, updateFileSchema } from '@pocketverse/shared';
 import type { JwtHelpers } from '../../lib/jwt.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
 import type { FilesService } from './files.service.js';
 
+/**
+ * Downloads run as plain browser navigations (native download UI with its own
+ * progress bar), so they authenticate with a short-lived single-file token in
+ * the query string instead of an Authorization header. Bearer auth still
+ * works for programmatic access.
+ */
+function requireAuthOrDownloadToken(jwt: JwtHelpers): RequestHandler {
+  const bearer = requireAuth(jwt);
+  return async (req, res, next) => {
+    const token = typeof req.query.token === 'string' ? req.query.token : undefined;
+    if (!token) {
+      return bearer(req, res, next);
+    }
+    try {
+      const claims = await jwt.verifyDownloadToken(token);
+      if (claims.fileId !== req.params.id) {
+        throw new Error('token/file mismatch');
+      }
+      req.user = { id: claims.sub, email: '' };
+      next();
+    } catch {
+      res.status(401).json({
+        error: {
+          code: 'DOWNLOAD_LINK_EXPIRED',
+          message: 'This download link expired. Go back to your drive and download again.',
+        },
+      });
+    }
+  };
+}
+
 export function createFilesRouter(service: FilesService, jwt: JwtHelpers): Router {
   const router = Router();
+
+  // Registered before the bearer guard: token-authenticated navigation.
+  router.get('/:id/download', requireAuthOrDownloadToken(jwt), async (req, res) => {
+    const { file, size, stream } = await service.download(req.user!.id, String(req.params.id));
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Content-Length', size.toString());
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+    );
+    await streamToResponse(stream, req, res);
+  });
+
   router.use(requireAuth(jwt));
+
+  router.post('/:id/download-token', async (req, res) => {
+    // Ownership (and existence) check happens in getFile.
+    const file = await service.getFile(req.user!.id, String(req.params.id));
+    const token = await jwt.signDownloadToken(req.user!.id, file.id);
+    res.json({ token });
+  });
 
   router.post('/uploads', validateBody(createUploadSchema), async (req, res) => {
     res.status(201).json({ upload: await service.createUpload(req.user!.id, req.body) });
@@ -32,17 +83,6 @@ export function createFilesRouter(service: FilesService, jwt: JwtHelpers): Route
 
   router.get('/:id', async (req, res) => {
     res.json({ file: await service.getFile(req.user!.id, req.params.id) });
-  });
-
-  router.get('/:id/download', async (req, res) => {
-    const { file, size, stream } = await service.download(req.user!.id, req.params.id);
-    res.setHeader('Content-Type', file.mimeType);
-    res.setHeader('Content-Length', size.toString());
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
-    );
-    await streamToResponse(stream, req, res);
   });
 
   router.patch('/:id', validateBody(updateFileSchema), async (req, res) => {

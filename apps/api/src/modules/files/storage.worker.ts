@@ -77,6 +77,11 @@ export function createStorageWorker({
             if (decile > lastLoggedDecile) {
               lastLoggedDecile = decile;
               logger.info({ fileId, chunkIndex, percent: decile * 10 }, 'Chunk transfer progress');
+              // Persisted so the UI's "syncing… N%" stays honest. Fire-and-forget:
+              // progress display must never stall the transfer itself.
+              void prisma.fileChunk
+                .update({ where: { id: chunk.id }, data: { progress: decile * 10 } })
+                .catch(() => undefined);
             }
           },
         }),
@@ -88,7 +93,7 @@ export function createStorageWorker({
 
       await prisma.fileChunk.update({
         where: { id: chunk.id },
-        data: { status: 'UPLOADED', telegramMessageId: messageId },
+        data: { status: 'UPLOADED', telegramMessageId: messageId, progress: 100 },
       });
       await rm(stagingPath, { force: true });
 

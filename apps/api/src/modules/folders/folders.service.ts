@@ -173,13 +173,14 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
         prisma.file.findMany({
           where: { ownerId: userId, folderId },
           orderBy: { name: 'asc' },
+          include: { chunks: { select: { size: true, status: true, progress: true } } },
         }),
       ]);
 
       return {
         breadcrumb,
         folders: folders.map(toFolderDto),
-        files: files.map(toFileDto),
+        files: files.map((file) => toFileDto(file, file.chunks)),
       };
     },
   };

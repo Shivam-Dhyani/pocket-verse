@@ -259,6 +259,75 @@ describe('file management', () => {
     expect((await strangerApi.delete(`/api/files/${fileId}`)).status).toBe(404);
   });
 
+  it('reports partial sync progress while chunks are still shipping', async () => {
+    const { api, queue } = await setupConnected();
+    // 16 bytes = 2 chunks of 8; upload only the first chunk's parts.
+    const content = randomBytes(16);
+    const create = await api.post('/api/files/uploads', { name: 'half.bin', size: 16 });
+    const { uploadId, partSize } = create.body.upload;
+    await api.putRaw(`/api/files/uploads/${uploadId}/parts/0`, content.subarray(0, partSize));
+    await api.putRaw(
+      `/api/files/uploads/${uploadId}/parts/1`,
+      content.subarray(partSize, partSize * 2),
+    );
+    await queue.drain(); // chunk 0 stored; chunk 1 not even staged yet
+
+    const file = await api.get(`/api/files/${create.body.upload.fileId}`);
+    expect(file.body.file.status).toBe('uploading');
+    expect(file.body.file.syncProgress).toBe(50);
+
+    const drive = await api.get('/api/drive');
+    expect(drive.body.files[0].syncProgress).toBe(50);
+  });
+
+  it('issues a download token that authorizes a plain (headerless) download', async () => {
+    const { app, api, queue } = await setupConnected();
+    const content = randomBytes(6);
+    const { fileId } = await uploadWhole(api, content, 'linked.bin');
+    await queue.drain();
+
+    const minted = await api.post(`/api/files/${fileId}/download-token`);
+    expect(minted.status).toBe(200);
+    const token = minted.body.token as string;
+
+    // No Authorization header — exactly how a browser navigation arrives.
+    const download = await request(app)
+      .get(`/api/files/${fileId}/download?token=${encodeURIComponent(token)}`)
+      .buffer(true);
+    expect(download.status).toBe(200);
+    expect(Buffer.compare(download.body as Buffer, content)).toBe(0);
+  });
+
+  it('rejects a download token used on a different file', async () => {
+    const { app, api, queue } = await setupConnected();
+    const first = await uploadWhole(api, randomBytes(6), 'one.bin');
+    const second = await uploadWhole(api, randomBytes(6), 'two.bin');
+    await queue.drain();
+
+    const minted = await api.post(`/api/files/${first.fileId}/download-token`);
+    const res = await request(app).get(
+      `/api/files/${second.fileId}/download?token=${encodeURIComponent(minted.body.token)}`,
+    );
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('DOWNLOAD_LINK_EXPIRED');
+  });
+
+  it('rejects garbage download tokens and refuses to mint for foreign files', async () => {
+    const { app, api, queue } = await setupConnected();
+    const { fileId } = await uploadWhole(api, randomBytes(6));
+    await queue.drain();
+
+    expect((await request(app).get(`/api/files/${fileId}/download?token=nonsense`)).status).toBe(
+      401,
+    );
+
+    const stranger = await request(app)
+      .post('/api/auth/register')
+      .send({ email: 'other@example.com', password: PASSWORD });
+    const strangerApi = authed(app, stranger.body.accessToken);
+    expect((await strangerApi.post(`/api/files/${fileId}/download-token`)).status).toBe(404);
+  });
+
   it('refuses to download a file that is not ready', async () => {
     const { api } = await setupConnected();
     const create = await api.post('/api/files/uploads', { name: 'x.bin', size: 12 });

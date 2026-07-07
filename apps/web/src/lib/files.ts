@@ -7,7 +7,7 @@ import type {
   UpdateFolderInput,
   UploadSessionDto,
 } from '@pocketverse/shared';
-import { ApiError, apiFetch, request } from '@/lib/api';
+import { API_URL, ApiError, apiFetch, request } from '@/lib/api';
 
 export const driveApi = {
   list: (folderId: string | null) =>
@@ -83,26 +83,20 @@ export async function uploadFileInParts(
   }
 }
 
-/** Downloads via authorized fetch and hands the bytes to the browser. */
+/**
+ * Downloads through the browser's native download manager: mint a short-lived
+ * token, then navigate. The browser shows real progress/speed/cancel, and
+ * multi-GB files never pass through page memory.
+ */
 export async function downloadFile(file: FileDto): Promise<void> {
-  const res = await apiFetch(`/api/files/${file.id}/download`);
-  if (!res.ok) {
-    const payload = (await res.json().catch(() => null)) as {
-      error?: { code?: string; message?: string };
-    } | null;
-    throw new ApiError(
-      res.status,
-      payload?.error?.code ?? 'DOWNLOAD_FAILED',
-      payload?.error?.message ?? 'The download failed. Try again.',
-    );
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
+  const { token } = await request<{ token: string }>(`/api/files/${file.id}/download-token`, {
+    method: 'POST',
+    auth: true,
+  });
   const anchor = document.createElement('a');
-  anchor.href = url;
+  anchor.href = `${API_URL}/api/files/${file.id}/download?token=${encodeURIComponent(token)}`;
   anchor.download = file.name;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
 }

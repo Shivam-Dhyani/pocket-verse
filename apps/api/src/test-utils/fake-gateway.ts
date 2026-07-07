@@ -96,9 +96,11 @@ export function createFakeGateway(options: FakeGatewayOptions = {}) {
       calls.push({ method: 'uploadFile', args: { ...args } });
       uploadAttempts += 1;
       await options.beforeUpload?.(args, uploadAttempts);
+      args.onProgress?.(0.5);
       const bytes = await readFile(args.path);
       const messageId = String(nextMessageId++);
       channelStore.set(messageId, bytes);
+      args.onProgress?.(1);
       return { messageId };
     },
     async *downloadChunk(_session, _channel, messageId) {

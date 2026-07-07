@@ -134,6 +134,8 @@ model FileChunk {
   telegramMessageId String?
   status            ChunkStatus @default(PENDING)
   attempts          Int         @default(0)
+  // Transfer progress to storage, 0-100 — drives the UI's sync percentage.
+  progress          Int         @default(0)
 
   @@unique([fileId, index])
 }

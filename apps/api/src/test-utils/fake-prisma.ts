@@ -81,6 +81,7 @@ interface FileChunkRow {
   telegramMessageId: string | null;
   status: 'PENDING' | 'UPLOADING' | 'UPLOADED' | 'ERROR';
   attempts: number;
+  progress: number;
 }
 
 interface UploadSessionRow {
@@ -445,6 +446,7 @@ export function createFakePrisma() {
             telegramMessageId: null,
             status: 'PENDING',
             attempts: 0,
+            progress: 0,
           };
           fileChunks.set(chunkRow.id, chunkRow);
         }

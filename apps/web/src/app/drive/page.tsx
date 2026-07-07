@@ -292,7 +292,8 @@ export default function DrivePage() {
                   📄 {file.name}
                   <span className="pv-row-meta">
                     {formatSize(file.size)}
-                    {file.status === 'uploading' && ' · syncing to your storage…'}
+                    {file.status === 'uploading' &&
+                      ` · syncing to your storage… ${file.syncProgress ?? 0}%`}
                     {file.status === 'error' && ' · ⚠ upload failed'}
                     {file.status === 'ready' && ' · ✓ stored'}
                   </span>

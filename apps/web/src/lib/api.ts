@@ -1,7 +1,7 @@
 import type { AuthResponse, LoginInput, RegisterInput, UserDto } from '@pocketverse/shared';
 import { useAuthStore } from '@/stores/auth';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
 export class ApiError extends Error {
   constructor(

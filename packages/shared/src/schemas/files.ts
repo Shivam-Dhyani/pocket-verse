@@ -59,6 +59,8 @@ export const fileDtoSchema = z.object({
   status: z.enum(fileStatusValues),
   checksum: z.string().nullable(),
   folderId: z.string().nullable(),
+  /** 0-100 while syncing to storage; null once ready/failed or when unknown. */
+  syncProgress: z.number().min(0).max(100).nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
