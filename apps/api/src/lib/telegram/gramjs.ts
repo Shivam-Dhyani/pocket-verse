@@ -2,6 +2,7 @@ import { Api, TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
 import { computeCheck } from 'telegram/Password.js';
 import { Logger, LogLevel } from 'telegram/extensions/Logger.js';
+import { CustomFile } from 'telegram/client/uploads.js';
 import bigInt from 'big-integer';
 import { AppError } from '../../middleware/errors.js';
 import type {
@@ -9,6 +10,7 @@ import type {
   SignInResult,
   StorageChannelInfo,
   TelegramGateway,
+  UploadFileArgs,
 } from './gateway.js';
 import { floodWaitError, isFloodWait, mapTelegramError } from './errors.js';
 
@@ -155,7 +157,88 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
         await client.invoke(new Api.auth.LogOut());
       });
     },
+
+    async uploadFile(
+      session: string,
+      channel: StorageChannelInfo,
+      args: UploadFileArgs,
+    ): Promise<{ messageId: string }> {
+      // No withTimeout here — a 1.5GB chunk legitimately takes longer than any
+      // sane fixed ceiling. GramJS streams the file from disk in parts.
+      const client = newClient(session);
+      try {
+        await client.connect();
+        const message = await withFloodWait(() =>
+          client.sendFile(channelPeer(channel), {
+            file: new CustomFile(args.fileName, args.fileSize, args.path),
+            caption: args.caption,
+            forceDocument: true,
+          }),
+        );
+        return { messageId: String(message.id) };
+      } catch (error) {
+        throw mapTelegramError(error);
+      } finally {
+        void client.destroy().catch(() => undefined);
+      }
+    },
+
+    async *downloadChunk(
+      session: string,
+      channel: StorageChannelInfo,
+      messageId: string,
+    ): AsyncIterable<Buffer> {
+      const client = newClient(session);
+      try {
+        // Connect + locate the message under the standard timeout…
+        const media = await withTimeout(async () => {
+          await client.connect();
+          const [message] = await client.getMessages(channelPeer(channel), {
+            ids: [Number(messageId)],
+          });
+          if (!message?.media) {
+            throw new AppError(
+              404,
+              'CHUNK_MISSING',
+              'Part of this file is missing from your storage. It may have been deleted there.',
+            );
+          }
+          return message.media;
+        });
+
+        // …then stream without a fixed ceiling — size is unbounded.
+        for await (const piece of client.iterDownload({
+          file: media,
+          requestSize: 512 * 1024,
+        })) {
+          yield piece as Buffer;
+        }
+      } catch (error) {
+        throw mapTelegramError(error);
+      } finally {
+        void client.destroy().catch(() => undefined);
+      }
+    },
+
+    async deleteMessages(
+      session: string,
+      channel: StorageChannelInfo,
+      messageIds: string[],
+    ): Promise<void> {
+      await withClient(session, async (client) => {
+        await client.deleteMessages(channelPeer(channel), messageIds.map(Number), {
+          revoke: true,
+        });
+      });
+    },
   };
+}
+
+function channelPeer(channel: StorageChannelInfo): Api.InputPeerChannel {
+  return new Api.InputPeerChannel({
+    channelId: bigInt(channel.channelId),
+    accessHash: bigInt(channel.accessHash),
+  });
 }
 
 /** Absorb short FLOOD_WAITs with a single wait-and-retry; surface long ones. */

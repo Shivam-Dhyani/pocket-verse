@@ -1,0 +1,134 @@
+import { rm } from 'node:fs/promises';
+import type { PrismaClient } from '@prisma/client';
+import type { Logger } from 'pino';
+import type { MasterKeyring } from '../../lib/crypto/index.js';
+import type { KeyedMutex } from '../../lib/mutex.js';
+import type { TelegramGateway } from '../../lib/telegram/gateway.js';
+import type { FinalFailureHandler, JobHandlers } from '../../lib/queue/index.js';
+import { AuditEventTypes, type AuditService } from '../audit/audit.service.js';
+import { decryptConnectionSession, requireChannel } from '../connection/session.js';
+
+export interface StorageWorkerDeps {
+  prisma: PrismaClient;
+  gateway: TelegramGateway;
+  keyring: MasterKeyring;
+  audit: AuditService;
+  lock: KeyedMutex;
+  logger: Logger;
+}
+
+/**
+ * Queue-side of the storage engine. Jobs are retried by the queue with
+ * exponential backoff (FLOOD_WAIT-aware: short waits are absorbed inside the
+ * gateway, longer ones fail the attempt and ride the backoff schedule).
+ */
+export function createStorageWorker({
+  prisma,
+  gateway,
+  keyring,
+  audit,
+  lock,
+  logger,
+}: StorageWorkerDeps): { handlers: JobHandlers; onFinalFailure: FinalFailureHandler } {
+  const handlers: JobHandlers = {
+    async 'chunk-upload'({ fileId, chunkIndex, stagingPath }) {
+      const chunk = await prisma.fileChunk.findUnique({
+        where: { fileId_index: { fileId, index: chunkIndex } },
+        include: { file: true },
+      });
+      if (!chunk || chunk.status === 'UPLOADED') {
+        // File deleted mid-upload or duplicate delivery — nothing to do.
+        await rm(stagingPath, { force: true });
+        return;
+      }
+
+      const connection = await prisma.storageConnection.findUnique({
+        where: { userId: chunk.file.ownerId },
+      });
+      if (!connection || connection.status !== 'CONNECTED') {
+        throw new Error('Storage connection unavailable for chunk upload');
+      }
+
+      await prisma.fileChunk.update({
+        where: { id: chunk.id },
+        data: { status: 'UPLOADING', attempts: { increment: 1 } },
+      });
+
+      const session = decryptConnectionSession(connection, keyring);
+      const { messageId } = await lock(chunk.file.ownerId, () =>
+        gateway.uploadFile(session, requireChannel(connection), {
+          path: stagingPath,
+          fileName:
+            chunk.file.totalChunks === 1
+              ? chunk.file.name
+              : `${chunk.file.name}.pvchunk${String(chunkIndex).padStart(4, '0')}`,
+          fileSize: Number(chunk.size),
+          caption: `pocketverse:${fileId}:${chunkIndex}`,
+        }),
+      );
+
+      await prisma.fileChunk.update({
+        where: { id: chunk.id },
+        data: { status: 'UPLOADED', telegramMessageId: messageId },
+      });
+      await rm(stagingPath, { force: true });
+
+      const remaining = await prisma.fileChunk.count({
+        where: { fileId, status: { not: 'UPLOADED' } },
+      });
+      if (remaining === 0) {
+        await prisma.file.update({ where: { id: fileId }, data: { status: 'READY' } });
+        await audit.record(chunk.file.ownerId, AuditEventTypes.FILE_UPLOADED, {
+          fileId,
+          name: chunk.file.name,
+          size: Number(chunk.file.size),
+        });
+      }
+    },
+
+    async 'messages-delete'({ userId, messageIds }) {
+      const connection = await prisma.storageConnection.findUnique({ where: { userId } });
+      if (!connection || connection.status !== 'CONNECTED') {
+        // Session gone (user disconnected) — the messages stay in THEIR
+        // account, which they control. Nothing more we can or should do.
+        logger.warn({ count: messageIds.length }, 'Skipping message deletion: no connection');
+        return;
+      }
+      const session = decryptConnectionSession(connection, keyring);
+      await lock(userId, () =>
+        gateway.deleteMessages(session, requireChannel(connection), messageIds),
+      );
+    },
+  };
+
+  const onFinalFailure: FinalFailureHandler = async (name, payload, error) => {
+    if (name === 'chunk-upload') {
+      const { fileId, chunkIndex, stagingPath } = payload as {
+        fileId: string;
+        chunkIndex: number;
+        stagingPath: string;
+      };
+      logger.error({ err: error, fileId, chunkIndex }, 'Chunk upload failed permanently');
+      await rm(stagingPath, { force: true }).catch(() => undefined);
+      await prisma.fileChunk
+        .updateMany({
+          where: { fileId, index: chunkIndex },
+          data: { status: 'ERROR' },
+        })
+        .catch(() => undefined);
+      const file = await prisma.file
+        .update({ where: { id: fileId }, data: { status: 'ERROR' } })
+        .catch(() => undefined);
+      if (file) {
+        await audit.record(file.ownerId, AuditEventTypes.FILE_UPLOAD_FAILED, {
+          fileId,
+          name: file.name,
+        });
+      }
+      return;
+    }
+    logger.error({ err: error, job: name }, 'Job failed permanently');
+  };
+
+  return { handlers, onFinalFailure };
+}

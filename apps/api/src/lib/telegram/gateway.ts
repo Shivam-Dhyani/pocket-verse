@@ -18,6 +18,15 @@ export interface StorageChannelInfo {
   accessHash: string;
 }
 
+export interface UploadFileArgs {
+  /** Staged chunk on local disk — streamed, never buffered. */
+  path: string;
+  fileName: string;
+  fileSize: number;
+  /** Machine-readable marker, e.g. `pocketverse:{fileId}:{chunkIndex}`. */
+  caption: string;
+}
+
 export interface TelegramGateway {
   /** @throws AppError (mapped) on RPC failure */
   sendCode(phone: string): Promise<SendCodeResult>;
@@ -33,4 +42,18 @@ export interface TelegramGateway {
   checkHealth(session: string, channel?: StorageChannelInfo): Promise<void>;
   /** Invalidates the session on the storage side. Best-effort. */
   logOut(session: string): Promise<void>;
+  /** Uploads one staged chunk as a channel document. */
+  uploadFile(
+    session: string,
+    channel: StorageChannelInfo,
+    args: UploadFileArgs,
+  ): Promise<{ messageId: string }>;
+  /** Streams one chunk's bytes back; the iterable owns the connection. */
+  downloadChunk(
+    session: string,
+    channel: StorageChannelInfo,
+    messageId: string,
+  ): AsyncIterable<Buffer>;
+  /** Deletes chunk messages (revoked for all members). */
+  deleteMessages(session: string, channel: StorageChannelInfo, messageIds: string[]): Promise<void>;
 }

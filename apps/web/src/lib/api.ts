@@ -72,6 +72,39 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return payload as T;
 }
 
+/**
+ * Token-attaching fetch for non-JSON traffic (raw part uploads, downloads).
+ * Retries once after a silent refresh on 401, like request().
+ */
+export async function apiFetch(
+  path: string,
+  init: RequestInit = {},
+  _retried = false,
+): Promise<Response> {
+  const { accessToken } = useAuthStore.getState();
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      credentials: 'include',
+      ...init,
+      headers: {
+        ...(init.headers ?? {}),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+    });
+  } catch {
+    throw new ApiError(
+      0,
+      'NETWORK',
+      "Can't reach the server. Check that the API is running, then try again.",
+    );
+  }
+  if (res.status === 401 && !_retried && (await tryRefresh())) {
+    return apiFetch(path, init, true);
+  }
+  return res;
+}
+
 async function tryRefresh(): Promise<boolean> {
   try {
     const result = await request<AuthResponse>('/api/auth/refresh', { method: 'POST' });

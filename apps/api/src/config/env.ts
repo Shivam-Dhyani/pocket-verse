@@ -22,6 +22,19 @@ const envSchema = z.object({
       .positive(),
   ),
   TELEGRAM_API_HASH: z.string().min(16),
+  // Queue backend: with REDIS_URL jobs run on BullMQ; without it an
+  // in-process runner with the same retry policy is used (dev / no-Redis).
+  REDIS_URL: z.string().url().optional(),
+  // Telegram-level chunk size (handoff: 1.5GB default, tune later).
+  CHUNK_SIZE_BYTES: z.coerce.number().int().positive().default(1_500_000_000),
+  // HTTP upload part size — small enough for free-tier request timeouts.
+  UPLOAD_PART_SIZE_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(8 * 1024 * 1024),
+  // Disk staging area for in-flight upload chunks (relative to apps/api).
+  STAGING_DIR: z.string().default('.staging'),
 });
 
 export type Env = z.infer<typeof envSchema>;

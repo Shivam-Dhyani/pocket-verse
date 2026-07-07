@@ -14,6 +14,10 @@ export const AuditEventTypes = {
   CONNECTION_CONNECTED: 'connection.connected',
   CONNECTION_DISCONNECTED: 'connection.disconnected',
   CONNECTION_HEALTH_FAILED: 'connection.health_failed',
+  FILE_UPLOADED: 'file.uploaded',
+  FILE_UPLOAD_FAILED: 'file.upload_failed',
+  FILE_DELETED: 'file.deleted',
+  FOLDER_DELETED: 'folder.deleted',
 } as const;
 
 export type AuditEventType = (typeof AuditEventTypes)[keyof typeof AuditEventTypes];

@@ -7,7 +7,7 @@ private cloud storage account. Your files never sit on our servers; we hold only
 metadata and connection credentials, and we're honest with you about exactly what we can and
 cannot see.
 
-**Status:** Phase 2 of 5 — storage connection with encrypted sessions. 🚧 Built in public.
+**Status:** Phase 3 of 5 — the core storage engine is live. 🚧 Built in public.
 
 ## Monorepo layout
 
@@ -45,6 +45,24 @@ packages/shared Zod schemas and types shared by both
   429s with `retryAfterSeconds`. Per-user mutex serializes all storage operations.
 - **Design record:** [ADR-0001](docs/adr/0001-session-key-encryption.md) — why sessions use a
   server-side master keyring (and why password-derived keys are a v2 opt-in, not the default).
+
+## Storage engine (Phase 3)
+
+- **Resumable uploads:** the client sends files in small sequential parts (8 MB default) that
+  stream to disk staging — an interrupted upload resumes from the last acknowledged part, and
+  the server tells the client exactly where to resume after a restart (`STAGING_LOST` → new
+  cursor). Progress shown in the UI is parts the server has confirmed, never an estimate.
+- **Chunking:** files are stored as ≤1.5 GB chunks (configurable), one channel message each;
+  per-chunk sha256 checksums plus a whole-file checksum are recorded. Downloads stream chunk by
+  chunk straight to the response — file bytes are never buffered in RAM and never persisted on
+  the server beyond transient staging.
+- **Queue:** every transfer runs as a job with exponential-backoff retries (FLOOD_WAIT-aware).
+  With `REDIS_URL` set jobs run on BullMQ (survive restarts); without it an in-process runner
+  applies the same policy — fine for local dev and single instances.
+- **Folders:** full CRUD with move/rename, cycle-proof moves, duplicate-name protection, and
+  recursive delete that also removes the chunk messages from the user's storage.
+- Deleting anything deletes it from the user's storage too — stated plainly in the UI before
+  confirming, never silently.
 
 ## Local development
 
@@ -94,7 +112,7 @@ and invalidates the session remotely — the channel and its contents stay in yo
 | Phase | Scope                                                               | Status         |
 | ----- | ------------------------------------------------------------------- | -------------- |
 | 1     | Monorepo, encryption core, user auth                                | ✅             |
-| 2     | Storage connection (private channel, encrypted sessions, ADR)       | ✅ this branch |
-| 3     | Streaming upload/download engine, chunking, folder CRUD             | ⏳             |
+| 2     | Storage connection (private channel, encrypted sessions, ADR)       | ✅             |
+| 3     | Streaming upload/download engine, chunking, folder CRUD             | ✅ this branch |
 | 4     | Drive UI — design system, browser, honest onboarding, security page | ⏳             |
 | 5     | Hardening, deploy (Vercel + Render/Koyeb + Neon + Upstash), runbook | ⏳             |

@@ -8,14 +8,17 @@ datasource db {
 }
 
 model User {
-  id            String             @id @default(cuid())
-  email         String             @unique
-  passwordHash  String
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  refreshTokens RefreshToken[]
-  connection    StorageConnection?
-  auditEvents   AuditEvent[]
+  id             String             @id @default(cuid())
+  email          String             @unique
+  passwordHash   String
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  refreshTokens  RefreshToken[]
+  connection     StorageConnection?
+  auditEvents    AuditEvent[]
+  folders        Folder[]
+  files          File[]
+  uploadSessions UploadSession[]
 }
 
 enum ConnectionStatus {
@@ -64,6 +67,95 @@ model AuditEvent {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+enum FileStatus {
+  UPLOADING
+  READY
+  ERROR
+}
+
+enum ChunkStatus {
+  PENDING
+  UPLOADING
+  UPLOADED
+  ERROR
+}
+
+model Folder {
+  id       String   @id @default(cuid())
+  name     String
+  parent   Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  parentId String?
+  children Folder[] @relation("FolderTree")
+  owner    User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId  String
+  files    File[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([ownerId, parentId, name])
+  @@index([ownerId, parentId])
+}
+
+model File {
+  id       String     @id @default(cuid())
+  name     String
+  size     BigInt
+  mimeType String
+  status   FileStatus @default(UPLOADING)
+  // sha256 of the content; multi-chunk files store a composite hash
+  // ("composite:" + sha256 over the ordered chunk hashes).
+  checksum String?
+
+  totalChunks   Int
+  folder        Folder?        @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  folderId      String?
+  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId       String
+  chunks        FileChunk[]
+  uploadSession UploadSession?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, folderId])
+  @@index([ownerId, name])
+}
+
+model FileChunk {
+  id                String      @id @default(cuid())
+  file              File        @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  fileId            String
+  index             Int
+  size              BigInt
+  checksum          String?
+  telegramMessageId String?
+  status            ChunkStatus @default(PENDING)
+  attempts          Int         @default(0)
+
+  @@unique([fileId, index])
+}
+
+model UploadSession {
+  id      String @id @default(cuid())
+  file    File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  fileId  String @unique
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+
+  // Parts arrive strictly in order; nextPart is the resume cursor.
+  partSize   Int
+  chunkSize  Int
+  totalParts Int
+  nextPart   Int      @default(0)
+  expiresAt  DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
 }
 
 model RefreshToken {
