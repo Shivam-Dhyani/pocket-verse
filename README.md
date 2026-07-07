@@ -51,6 +51,10 @@ packages/shared Zod schemas and types shared by both
 Requirements: Node ≥ 22, pnpm ≥ 10, and Postgres (any local instance or a free
 [Neon](https://neon.tech) database).
 
+One `.env` at the **repo root** drives everything: the API loads it on boot (a package-local
+`apps/api/.env` wins if both exist), and the Prisma scripts read it too. No local Postgres?
+A free [Neon](https://neon.tech) database works — paste its connection string as `DATABASE_URL`.
+
 ```bash
 pnpm install
 cp .env.example .env        # fill in DATABASE_URL, JWT_SECRET, MASTER_KEYS, TELEGRAM_API_*

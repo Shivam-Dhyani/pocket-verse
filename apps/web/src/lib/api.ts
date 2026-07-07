@@ -25,15 +25,25 @@ interface RequestOptions {
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { accessToken } = useAuthStore.getState();
 
-  const res = await fetch(`${API_URL}${path}`, {
-    method: options.method ?? 'GET',
-    credentials: 'include',
-    headers: {
-      ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.auth && accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-    },
-    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method: options.method ?? 'GET',
+      credentials: 'include',
+      headers: {
+        ...(options.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(options.auth && accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+    });
+  } catch {
+    // fetch() itself failed — the server is down or unreachable, not an HTTP error.
+    throw new ApiError(
+      0,
+      'NETWORK',
+      "Can't reach the server. Check that the API is running, then try again.",
+    );
+  }
 
   if (res.status === 204) {
     return undefined as T;

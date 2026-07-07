@@ -1,3 +1,5 @@
+// Must be first: fills process.env from .env files before validation runs.
+import './config/load-env-files.js';
 import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import { createLogger } from './lib/logger.js';

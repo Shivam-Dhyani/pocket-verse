@@ -12,7 +12,15 @@ const envSchema = z.object({
   MASTER_KEYS: z.string().min(1),
   MASTER_KEY_ACTIVE: z.string().min(1),
   CORS_ORIGIN: z.string().url().default('http://localhost:3000'),
-  TELEGRAM_API_ID: z.coerce.number().int().positive(),
+  // Preprocess so a missing/empty value reports "Required" instead of the
+  // baffling "expected number, received nan" that z.coerce produces.
+  TELEGRAM_API_ID: z.preprocess(
+    (value) => (value === undefined || value === '' ? undefined : Number(value)),
+    z
+      .number({ required_error: 'Required', invalid_type_error: 'Must be a number' })
+      .int()
+      .positive(),
+  ),
   TELEGRAM_API_HASH: z.string().min(16),
 });
 
