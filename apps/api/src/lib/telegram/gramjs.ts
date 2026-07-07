@@ -173,6 +173,12 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
             file: new CustomFile(args.fileName, args.fileSize, args.path),
             caption: args.caption,
             forceDocument: true,
+            // Parallel MTProto upload connections — the default single worker
+            // crawls (~1MB/s) on big files.
+            workers: 8,
+            progressCallback: args.onProgress
+              ? (progress) => args.onProgress?.(Number(progress))
+              : undefined,
           }),
         );
         return { messageId: String(message.id) };

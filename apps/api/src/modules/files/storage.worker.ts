@@ -55,6 +55,14 @@ export function createStorageWorker({
       });
 
       const session = decryptConnectionSession(connection, keyring);
+      const startedAt = Date.now();
+      const sizeMb = (Number(chunk.size) / 1024 / 1024).toFixed(1);
+      logger.info(
+        { fileId, chunkIndex, sizeMb, fileName: chunk.file.name },
+        'Chunk transfer to storage started',
+      );
+
+      let lastLoggedDecile = 0;
       const { messageId } = await lock(chunk.file.ownerId, () =>
         gateway.uploadFile(session, requireChannel(connection), {
           path: stagingPath,
@@ -64,7 +72,18 @@ export function createStorageWorker({
               : `${chunk.file.name}.pvchunk${String(chunkIndex).padStart(4, '0')}`,
           fileSize: Number(chunk.size),
           caption: `pocketverse:${fileId}:${chunkIndex}`,
+          onProgress: (fraction) => {
+            const decile = Math.floor(fraction * 10);
+            if (decile > lastLoggedDecile) {
+              lastLoggedDecile = decile;
+              logger.info({ fileId, chunkIndex, percent: decile * 10 }, 'Chunk transfer progress');
+            }
+          },
         }),
+      );
+      logger.info(
+        { fileId, chunkIndex, sizeMb, seconds: Math.round((Date.now() - startedAt) / 1000) },
+        'Chunk transfer to storage finished',
       );
 
       await prisma.fileChunk.update({

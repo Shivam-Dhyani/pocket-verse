@@ -25,6 +25,8 @@ export interface UploadFileArgs {
   fileSize: number;
   /** Machine-readable marker, e.g. `pocketverse:{fileId}:{chunkIndex}`. */
   caption: string;
+  /** Transfer progress (0..1) — used for honest operator-visible logging. */
+  onProgress?: (fraction: number) => void;
 }
 
 export interface TelegramGateway {
