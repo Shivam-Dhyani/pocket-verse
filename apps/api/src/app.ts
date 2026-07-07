@@ -67,7 +67,7 @@ export function createApp({ env, prisma, logger, gateway }: AppDeps): express.Ex
   app.use('/api/connection', limiters.connection, createConnectionRouter(connectionService, jwt));
 
   app.use(notFoundHandler);
-  app.use(createErrorHandler(logger));
+  app.use(createErrorHandler(logger, { includeHints: env.NODE_ENV !== 'production' }));
 
   return app;
 }
