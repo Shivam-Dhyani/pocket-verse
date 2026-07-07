@@ -117,9 +117,13 @@ export function createFakeGateway(options: FakeGatewayOptions = {}) {
     },
     async deleteMessages(_session, _channel, messageIds) {
       calls.push({ method: 'deleteMessages', args: { messageIds } });
+      let deletedCount = 0;
       for (const id of messageIds) {
-        channelStore.delete(id);
+        if (channelStore.delete(id)) {
+          deletedCount += 1;
+        }
       }
+      return { deletedCount };
     },
   };
 

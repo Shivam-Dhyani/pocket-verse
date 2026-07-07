@@ -118,10 +118,20 @@ export function createStorageWorker({
         logger.warn({ count: messageIds.length }, 'Skipping message deletion: no connection');
         return;
       }
+      logger.info({ count: messageIds.length }, 'Deleting chunk messages from storage');
       const session = decryptConnectionSession(connection, keyring);
-      await lock(userId, () =>
+      const { deletedCount } = await lock(userId, () =>
         gateway.deleteMessages(session, requireChannel(connection), messageIds),
       );
+      if (deletedCount < messageIds.length) {
+        // Not fatal (some may have been deleted manually already) — but never silent.
+        logger.warn(
+          { requested: messageIds.length, deletedCount },
+          'Storage reported fewer deletions than requested',
+        );
+      } else {
+        logger.info({ deletedCount }, 'Chunk messages deleted from storage');
+      }
     },
   };
 

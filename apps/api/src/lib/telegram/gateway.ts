@@ -56,6 +56,10 @@ export interface TelegramGateway {
     channel: StorageChannelInfo,
     messageId: string,
   ): AsyncIterable<Buffer>;
-  /** Deletes chunk messages (revoked for all members). */
-  deleteMessages(session: string, channel: StorageChannelInfo, messageIds: string[]): Promise<void>;
+  /** Deletes chunk messages for all members; reports how many really went. */
+  deleteMessages(
+    session: string,
+    channel: StorageChannelInfo,
+    messageIds: string[],
+  ): Promise<{ deletedCount: number }>;
 }

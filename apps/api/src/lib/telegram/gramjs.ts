@@ -230,11 +230,18 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
       session: string,
       channel: StorageChannelInfo,
       messageIds: string[],
-    ): Promise<void> {
-      await withClient(session, async (client) => {
-        await client.deleteMessages(channelPeer(channel), messageIds.map(Number), {
-          revoke: true,
-        });
+    ): Promise<{ deletedCount: number }> {
+      return withClient(session, async (client) => {
+        // Explicit channel deletion (deletes for all members) — the high-level
+        // client.deleteMessages() convenience routes by entity type and has
+        // silently no-oped for some setups.
+        const result = await client.invoke(
+          new Api.channels.DeleteMessages({
+            channel: channelPeer(channel),
+            id: messageIds.map(Number),
+          }),
+        );
+        return { deletedCount: result.ptsCount };
       });
     },
   };
