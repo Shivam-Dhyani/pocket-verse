@@ -117,6 +117,15 @@ pnpm build       # shared (tsc), api (tsc), web (next build)
 
 CI (GitHub Actions) runs all four on every PR. Husky + lint-staged keep commits clean locally.
 
+### Troubleshooting
+
+**`prisma generate` fails with `EPERM: operation not permitted, rename …` (Windows).**
+This is a file lock, not a code error — a running process is holding the Prisma query-engine DLL
+inside `node_modules`. It only matters when the Prisma **schema** changed; if a `git pull` only
+touched source files, your existing generated client is still valid and you can skip it. To clear
+it: stop the dev server (`Ctrl+C`, or `taskkill /F /IM node.exe` to kill all Node), close/reload
+your editor if it's open on the repo, then run `pnpm --filter @pocketverse/api exec prisma generate`.
+
 ### Manually verifying the storage connection
 
 The connection flow talks to real Telegram servers, so CI covers it with a fake gateway; verify
