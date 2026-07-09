@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { UploadSessionDto } from '@pocketverse/shared';
 import { ApiError, apiFetch, request } from '@/lib/api';
 
-export type UploadState = 'uploading' | 'paused' | 'error' | 'done';
+export type UploadState = 'uploading' | 'paused' | 'error' | 'syncing';
 
 export interface UploadEntry {
   id: string;
@@ -157,9 +157,11 @@ async function runLoop(id: string, onSettled: () => void): Promise<void> {
     return;
   }
 
-  store.set(id, { state: 'done', fraction: 1 });
+  // Bytes are now fully on our server, but the real work — syncing to the
+  // user's storage — is still running. Don't claim "done": hand off to the
+  // file row's honest "syncing X%" badge, which becomes the single indicator.
+  store.set(id, { state: 'syncing', fraction: 1 });
   controllers.delete(id);
   onSettled();
-  // Quietly clear finished entries after a beat — the file row takes over.
-  setTimeout(() => dismissUpload(id), 4000);
+  setTimeout(() => dismissUpload(id), 2500);
 }

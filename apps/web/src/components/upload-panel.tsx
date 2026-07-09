@@ -15,14 +15,17 @@ export function UploadPanel({ onSettled }: { onSettled: () => void }) {
       {entries.map((item) => (
         <div className="pv-upload-item" key={item.id}>
           <div className="top">
-            <span className="name">{item.name}</span>
+            <span className="name">
+              {item.state === 'syncing' ? 'Uploaded ' : 'Uploading '}
+              {item.name}
+            </span>
             <span className="pct">
               {item.state === 'error'
                 ? (item.error ?? 'Failed')
                 : item.state === 'paused'
                   ? 'Paused'
-                  : item.state === 'done'
-                    ? 'Done'
+                  : item.state === 'syncing'
+                    ? 'Syncing to storage…'
                     : `${Math.round(item.fraction * 100)}%`}
             </span>
             {item.state === 'uploading' && (

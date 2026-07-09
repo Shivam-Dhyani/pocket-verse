@@ -111,7 +111,7 @@ export function createApp({ env, prisma, logger, gateway, queue }: AppDeps): exp
     audit,
     stagingDir: env.STAGING_DIR,
   });
-  app.use('/api/files', limiters.uploads, createFilesRouter(filesService, jwt));
+  app.use('/api/files', limiters.uploads, createFilesRouter(filesService, jwt, env.CORS_ORIGIN));
   app.use('/api/folders', createFoldersRouter(foldersService, jwt));
   app.use('/api/drive', createDriveRouter(foldersService, jwt));
   app.use('/api/activity', createActivityRouter(prisma, jwt));

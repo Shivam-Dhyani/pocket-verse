@@ -37,20 +37,39 @@ function requireAuthOrDownloadToken(jwt: JwtHelpers): RequestHandler {
   };
 }
 
-export function createFilesRouter(service: FilesService, jwt: JwtHelpers): Router {
+export function createFilesRouter(
+  service: FilesService,
+  jwt: JwtHelpers,
+  webOrigin: string,
+): Router {
   const router = Router();
 
   // Registered before the bearer guard: token-authenticated navigation.
   router.get('/:id/download', requireAuthOrDownloadToken(jwt), async (req, res) => {
     const { file, size, stream } = await service.download(req.user!.id, String(req.params.id));
-    // inline → previews render in the page; attachment → save dialog.
-    const disposition = req.query.disposition === 'inline' ? 'inline' : 'attachment';
+
+    // Inline preview is honored ONLY for types that render safely in a browser
+    // (images, PDF). Anything else is forced to attachment so a stored HTML
+    // file can never execute in our origin — even if someone crafts the URL.
+    const wantsInline = req.query.disposition === 'inline';
+    const inline = wantsInline && isPreviewable(file.mimeType);
+
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Length', size.toString());
     res.setHeader(
       'Content-Disposition',
-      `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
     );
+
+    if (inline) {
+      // The web app is a separate origin, so Helmet's default same-origin
+      // resource/frame policy blocks embedding. Relax JUST for safe previews:
+      // let the web origin load the image and frame the PDF.
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.removeHeader('X-Frame-Options');
+      res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${webOrigin}`);
+    }
+
     await streamToResponse(stream, req, res);
   });
 
@@ -102,6 +121,11 @@ export function createFilesRouter(service: FilesService, jwt: JwtHelpers): Route
   });
 
   return router;
+}
+
+/** Types the browser can safely render inline (must match the web client). */
+export function isPreviewable(mimeType: string): boolean {
+  return mimeType.startsWith('image/') || mimeType === 'application/pdf';
 }
 
 /** Pipes the chunk stream to the response with backpressure + abort handling. */

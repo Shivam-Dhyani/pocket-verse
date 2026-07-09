@@ -120,12 +120,15 @@ export function createFilesService({
 
       const totalChunks = Math.ceil(input.size / chunkSize);
       const totalParts = Math.ceil(input.size / partSize);
+      // With nosniff, the browser trusts our Content-Type exactly — so back-fill
+      // a real type from the extension when the client didn't provide one.
+      const mimeType = resolveMimeType(input.mimeType, input.name);
 
       const file = await prisma.file.create({
         data: {
           name: input.name,
           size: BigInt(input.size),
-          mimeType: input.mimeType,
+          mimeType,
           status: 'UPLOADING',
           totalChunks,
           folderId: input.folderId ?? null,
@@ -455,6 +458,38 @@ function toUploadDto(session: UploadSession, file: FileRow): UploadSessionDto {
     nextPart: session.nextPart,
     fileStatus: statusMap[file.status],
   };
+}
+
+const EXTENSION_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  avif: 'image/avif',
+  pdf: 'application/pdf',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mkv: 'video/x-matroska',
+  mov: 'video/quicktime',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  zip: 'application/zip',
+  txt: 'text/plain',
+  json: 'application/json',
+};
+
+/** Keep a caller-provided specific type; otherwise infer from the extension. */
+export function resolveMimeType(provided: string, name: string): string {
+  const trimmed = provided.trim();
+  if (trimmed && trimmed !== 'application/octet-stream') {
+    return trimmed;
+  }
+  const ext = name.includes('.') ? name.split('.').pop()!.toLowerCase() : '';
+  return EXTENSION_MIME[ext] ?? 'application/octet-stream';
 }
 
 async function sha256OfFile(filePath: string): Promise<string> {

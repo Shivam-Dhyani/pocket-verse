@@ -149,7 +149,7 @@ describe('stats', () => {
 });
 
 describe('inline previews', () => {
-  it('serves inline disposition when requested via token', async () => {
+  it('serves a previewable type inline, with cross-origin embedding allowed', async () => {
     const { app, api, queue } = await setupConnected();
     const fileId = await upload(api, 'photo.jpg');
     await queue.drain();
@@ -162,5 +162,26 @@ describe('inline previews', () => {
       .buffer(true);
     expect(res.status).toBe(200);
     expect(res.headers['content-disposition']).toMatch(/^inline;/);
+    // A .jpg with no client mime is inferred, so the browser renders it.
+    expect(res.headers['content-type']).toContain('image/jpeg');
+    // The web origin can embed it (Helmet's same-origin defaults are relaxed here).
+    expect(res.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    expect(res.headers['x-frame-options']).toBeUndefined();
+  });
+
+  it('forces attachment for non-previewable types even when inline is requested', async () => {
+    const { app, api, queue } = await setupConnected();
+    const fileId = await upload(api, 'notes.txt');
+    await queue.drain();
+
+    const minted = await api.post(`/api/files/${fileId}/download-token`);
+    const res = await request(app)
+      .get(
+        `/api/files/${fileId}/download?token=${encodeURIComponent(minted.body.token)}&disposition=inline`,
+      )
+      .buffer(true);
+    // A text file must never render inline in our origin — forced to attachment.
+    expect(res.headers['content-disposition']).toMatch(/^attachment;/);
+    expect(res.headers['cross-origin-resource-policy'] ?? 'same-origin').toBe('same-origin');
   });
 });
