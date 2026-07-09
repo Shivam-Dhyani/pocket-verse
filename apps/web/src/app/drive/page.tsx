@@ -9,7 +9,7 @@ import type { FileDto, FolderDto } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
 import { canPreview, downloadFile, driveApi } from '@/lib/files';
-import { startUpload, useUploadsStore } from '@/stores/uploads';
+import { activeUploadFileIds, startUpload, useUploadsStore } from '@/stores/uploads';
 import { useAuthStore } from '@/stores/auth';
 import { AppHeader } from '@/components/app-header';
 import { SearchBox } from '@/components/search-box';
@@ -38,7 +38,11 @@ export default function DrivePage() {
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [preview, setPreview] = useState<FileDto | null>(null);
   const [moving, setMoving] = useState<FileDto | null>(null);
-  const uploadCount = useUploadsStore((state) => Object.keys(state.uploads).length);
+  const uploads = useUploadsStore((state) => state.uploads);
+  const uploadCount = Object.keys(uploads).length;
+  // Files still shown in the upload panel are hidden from the grid so the same
+  // file never appears twice with two different progress indicators.
+  const hiddenFileIds = activeUploadFileIds(uploads);
 
   useEffect(() => {
     const stored = window.localStorage.getItem('pv-view');
@@ -125,6 +129,22 @@ export default function DrivePage() {
     }
   }
 
+  // Clicking a file opens it: preview if the browser can render it, else download.
+  function openFile(file: FileDto) {
+    if (file.status !== 'ready') {
+      return;
+    }
+    if (canPreview(file.mimeType)) {
+      setPreview(file);
+    } else {
+      void downloadFile(file);
+    }
+  }
+
+  const visibleFiles = (drive.data?.files ?? []).filter((file) => !hiddenFileIds.has(file.id));
+  const visibleFolders = drive.data?.folders ?? [];
+  const isEmpty = drive.data && visibleFolders.length === 0 && visibleFiles.length === 0;
+
   if (me.isPending || (me.isSuccess && connection.isPending)) {
     return (
       <div className="pv-app">
@@ -156,6 +176,12 @@ export default function DrivePage() {
       ) : (
         <div {...getRootProps({ className: `pv-dropzone${isDragActive ? ' active' : ''}` })}>
           <input {...getInputProps()} />
+
+          {isDragActive && (
+            <div className="pv-drop-overlay">
+              <UploadPortal width={22} height={22} /> Drop files to upload here
+            </div>
+          )}
 
           <div className="pv-drive-toolbar">
             <Breadcrumb breadcrumb={drive.data?.breadcrumb ?? []} onNavigate={setFolderId} />
@@ -196,8 +222,6 @@ export default function DrivePage() {
             </span>
           </div>
 
-          {isDragActive && <div className="pv-drop-hint">Drop files to upload to this folder</div>}
-
           {error && (
             <div className="pv-error" role="alert">
               {error}
@@ -210,26 +234,23 @@ export default function DrivePage() {
             <p className="pv-footnote" style={{ padding: 'var(--pv-s6)' }}>
               <span className="pv-spinner" /> Loading…
             </p>
-          ) : drive.data && drive.data.folders.length === 0 && drive.data.files.length === 0 ? (
+          ) : isEmpty ? (
             <EmptyState icon={<UploadPortal width={44} height={44} />} title="Nothing here yet">
-              Drag files anywhere on this page, or use the Upload button.
+              Drag files anywhere in this area, or use the Upload button.
             </EmptyState>
-          ) : view === 'grid' ? (
-            <GridView
-              data={drive.data!}
-              onOpenFolder={setFolderId}
-              onPreview={setPreview}
-              onMove={setMoving}
-              act={act}
-            />
           ) : (
-            <ListView
-              data={drive.data!}
-              onOpenFolder={setFolderId}
-              onPreview={setPreview}
-              onMove={setMoving}
-              act={act}
-            />
+            (() => {
+              const viewProps: ViewProps = {
+                folders: visibleFolders,
+                files: visibleFiles,
+                onOpenFolder: setFolderId,
+                onOpenFile: openFile,
+                onPreview: setPreview,
+                onMove: setMoving,
+                act,
+              };
+              return view === 'grid' ? <GridView {...viewProps} /> : <ListView {...viewProps} />;
+            })()
           )}
         </div>
       )}
@@ -273,8 +294,10 @@ function Breadcrumb({
 }
 
 interface ViewProps {
-  data: { folders: FolderDto[]; files: FileDto[] };
+  folders: FolderDto[];
+  files: FileDto[];
   onOpenFolder: (id: string) => void;
+  onOpenFile: (file: FileDto) => void;
   onPreview: (file: FileDto) => void;
   onMove: (file: FileDto) => void;
   act: (action: () => Promise<unknown>) => Promise<void>;
@@ -282,7 +305,8 @@ interface ViewProps {
 
 function fileActions(file: FileDto, props: ViewProps) {
   return (
-    <span className="pv-row-actions">
+    // Clicks on the action buttons must not also trigger the row's open handler.
+    <span className="pv-row-actions" onClick={(event) => event.stopPropagation()}>
       {file.status === 'ready' && canPreview(file.mimeType) && (
         <button
           className="pv-iconbtn"
@@ -341,7 +365,7 @@ function fileActions(file: FileDto, props: ViewProps) {
 
 function folderActions(folder: FolderDto, props: ViewProps) {
   return (
-    <span className="pv-row-actions">
+    <span className="pv-row-actions" onClick={(event) => event.stopPropagation()}>
       <button
         className="pv-iconbtn"
         type="button"
@@ -378,35 +402,36 @@ function folderActions(folder: FolderDto, props: ViewProps) {
 function ListView(props: ViewProps) {
   return (
     <ul className="pv-list">
-      {props.data.folders.map((folder) => (
-        <li key={folder.id} className="pv-row">
+      {props.folders.map((folder) => (
+        <li
+          key={folder.id}
+          className="pv-row pv-row--clickable"
+          onClick={() => props.onOpenFolder(folder.id)}
+        >
           <span className="pv-row-icon">
             <FolderIcon />
           </span>
           <span className="pv-row-main">
-            <button
-              className="pv-row-name"
-              type="button"
-              onClick={() => props.onOpenFolder(folder.id)}
-            >
-              {folder.name}
-            </button>
+            <span className="pv-row-name">{folder.name}</span>
             <span className="pv-row-meta">Folder</span>
           </span>
           {folderActions(folder, props)}
         </li>
       ))}
-      {props.data.files.map((file) => {
+      {props.files.map((file) => {
         const Icon = iconForMime(file.mimeType);
+        const clickable = file.status === 'ready';
         return (
-          <li key={file.id} className="pv-row">
+          <li
+            key={file.id}
+            className={`pv-row${clickable ? ' pv-row--clickable' : ''}`}
+            onClick={clickable ? () => props.onOpenFile(file) : undefined}
+          >
             <span className="pv-row-icon">
               <Icon />
             </span>
             <span className="pv-row-main">
-              <span className="pv-row-name" style={{ cursor: 'default' }}>
-                {file.name}
-              </span>
+              <span className="pv-row-name">{file.name}</span>
               <span
                 className="pv-row-meta"
                 style={{ display: 'flex', gap: 'var(--pv-s2)', alignItems: 'center' }}
@@ -426,30 +451,34 @@ function ListView(props: ViewProps) {
 function GridView(props: ViewProps) {
   return (
     <div className="pv-grid">
-      {props.data.folders.map((folder) => (
-        <div key={folder.id} className="pv-grid-card">
+      {props.folders.map((folder) => (
+        <div
+          key={folder.id}
+          className="pv-grid-card pv-row--clickable"
+          onClick={() => props.onOpenFolder(folder.id)}
+        >
           <span className="pv-row-icon">
             <FolderIcon width={26} height={26} />
           </span>
-          <button
-            className="pv-row-name"
-            type="button"
-            onClick={() => props.onOpenFolder(folder.id)}
-            style={{ fontWeight: 500 }}
-          >
+          <span className="pv-row-name" style={{ fontWeight: 500 }}>
             {folder.name}
-          </button>
+          </span>
           {folderActions(folder, props)}
         </div>
       ))}
-      {props.data.files.map((file) => {
+      {props.files.map((file) => {
         const Icon = iconForMime(file.mimeType);
+        const clickable = file.status === 'ready';
         return (
-          <div key={file.id} className="pv-grid-card">
+          <div
+            key={file.id}
+            className={`pv-grid-card${clickable ? ' pv-row--clickable' : ''}`}
+            onClick={clickable ? () => props.onOpenFile(file) : undefined}
+          >
             <span className="pv-row-icon">
               <Icon width={26} height={26} />
             </span>
-            <span className="pv-row-name" style={{ cursor: 'default', fontWeight: 500 }}>
+            <span className="pv-row-name" style={{ fontWeight: 500 }}>
               {file.name}
             </span>
             <span className="pv-row-meta">{formatSize(file.size)}</span>

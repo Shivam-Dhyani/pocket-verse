@@ -49,15 +49,18 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           title="Sign out"
           aria-label="Sign out"
           style={{ width: 'auto', paddingInline: 10, fontSize: 'var(--pv-text-xs)' }}
-          onClick={() =>
+          onClick={() => {
+            if (!window.confirm('Sign out of Pocketverse?')) {
+              return;
+            }
             void api
               .logout()
               .catch(() => undefined)
               .then(() => {
                 clearSession();
                 router.replace('/');
-              })
-          }
+              });
+          }}
         >
           Sign out
         </button>

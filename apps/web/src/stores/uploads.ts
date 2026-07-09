@@ -9,6 +9,9 @@ export interface UploadEntry {
   name: string;
   fraction: number;
   state: UploadState;
+  /** The server file id, once the upload session exists — lets the drive hide
+   *  the file row while it's represented in the upload panel (no double status). */
+  fileId?: string;
   error?: string;
 }
 
@@ -69,6 +72,7 @@ export async function startUpload(
       },
     });
     controllers.set(id, { file, session: upload, nextPart: upload.nextPart, paused: false });
+    useUploadsStore.getState().set(id, { fileId: upload.fileId });
     await runLoop(id, onSettled);
   } catch (error) {
     useUploadsStore.getState().set(id, {
@@ -158,10 +162,22 @@ async function runLoop(id: string, onSettled: () => void): Promise<void> {
   }
 
   // Bytes are now fully on our server, but the real work — syncing to the
-  // user's storage — is still running. Don't claim "done": hand off to the
-  // file row's honest "syncing X%" badge, which becomes the single indicator.
+  // user's storage — is still running. Show a brief "Uploaded ✓" beat, then
+  // dismiss so the file row's honest "syncing X%" badge (which was hidden
+  // while this entry was active) becomes the single indicator. No overlap.
   store.set(id, { state: 'syncing', fraction: 1 });
   controllers.delete(id);
   onSettled();
-  setTimeout(() => dismissUpload(id), 2500);
+  setTimeout(() => dismissUpload(id), 1200);
+}
+
+/** File ids currently represented in the upload panel — hidden from the grid. */
+export function activeUploadFileIds(uploads: Record<string, UploadEntry>): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of Object.values(uploads)) {
+    if (entry.fileId) {
+      ids.add(entry.fileId);
+    }
+  }
+  return ids;
 }

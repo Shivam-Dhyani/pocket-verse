@@ -612,23 +612,35 @@ button {
 }
 
 .pv-dropzone {
+  position: relative;
   border-radius: var(--pv-radius-lg);
   transition: box-shadow var(--pv-fast);
-  min-height: 320px;
+  /* Always a large drop target so dropping works with any amount of content,
+     not just when the empty state fills the space. */
+  min-height: 66vh;
 }
 
 .pv-dropzone.active {
   box-shadow: 0 0 0 2px var(--pv-accent);
 }
 
-.pv-drop-hint {
-  border: 1.5px dashed var(--pv-border-strong);
-  border-radius: var(--pv-radius);
-  padding: var(--pv-s3);
-  text-align: center;
-  color: var(--pv-text-muted);
-  font-size: var(--pv-text-xs);
-  margin-bottom: var(--pv-s4);
+/* Absolute overlay so activating the drop hint never shifts layout (which
+   would flicker the drag state). */
+.pv-drop-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pv-s2);
+  border: 1.5px dashed var(--pv-accent);
+  border-radius: var(--pv-radius-lg);
+  background: color-mix(in srgb, var(--pv-accent) 8%, var(--pv-bg) 88%);
+  color: var(--pv-text);
+  font-size: var(--pv-text-md);
+  font-weight: 500;
+  pointer-events: none;
 }
 
 /* list view */
@@ -655,6 +667,10 @@ button {
 .pv-row:hover {
   background: var(--pv-surface-raised);
   border-color: var(--pv-border);
+}
+
+.pv-row--clickable {
+  cursor: pointer;
 }
 
 .pv-row-icon {

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { AppHeader } from '@/components/app-header';
+import { ConnectionManager } from '@/components/connection-manager';
 import { LockIcon, ShieldIcon } from '@/components/icons';
 
 export default function SecurityPage() {
@@ -14,6 +15,8 @@ export default function SecurityPage() {
           Plain language, no marketing. Here is exactly what we do with your data — and what we can
           and cannot see.
         </p>
+
+        <ConnectionManager />
 
         <section className="pv-section">
           <h2>
