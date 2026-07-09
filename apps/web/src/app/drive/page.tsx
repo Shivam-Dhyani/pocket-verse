@@ -3,25 +3,53 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import type { FileDto } from '@pocketverse/shared';
+import { useCallback, useEffect, useState } from 'react';
+import { useDropzone } from 'react-dropzone';
+import type { FileDto, FolderDto } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
-import { downloadFile, driveApi, uploadFileInParts } from '@/lib/files';
+import { canPreview, downloadFile, driveApi } from '@/lib/files';
+import { startUpload, useUploadsStore } from '@/stores/uploads';
 import { useAuthStore } from '@/stores/auth';
+import { AppHeader } from '@/components/app-header';
+import { SearchBox } from '@/components/search-box';
+import { UploadPanel } from '@/components/upload-panel';
+import { PreviewModal } from '@/components/preview-modal';
+import { MoveDialog } from '@/components/move-dialog';
+import { EmptyState, StatusBadge, formatSize } from '@/components/ui';
+import {
+  DownloadIcon,
+  EyeIcon,
+  FolderIcon,
+  GridIcon,
+  iconForMime,
+  ListIcon,
+  MoveIcon,
+  PencilIcon,
+  TrashIcon,
+  UploadPortal,
+} from '@/components/icons';
 
-/**
- * Functional drive: folders, resumable uploads with real progress, streaming
- * downloads. The Phase 4 design pass restyles this; behavior lands now.
- */
 export default function DrivePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { user, clearSession } = useAuthStore();
   const [folderId, setFolderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [uploads, setUploads] = useState<Record<string, number>>({});
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [view, setView] = useState<'list' | 'grid'>('list');
+  const [preview, setPreview] = useState<FileDto | null>(null);
+  const [moving, setMoving] = useState<FileDto | null>(null);
+  const uploadCount = useUploadsStore((state) => Object.keys(state.uploads).length);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem('pv-view');
+    if (stored === 'grid' || stored === 'list') {
+      setView(stored);
+    }
+  }, []);
+  const changeView = (next: 'list' | 'grid') => {
+    setView(next);
+    window.localStorage.setItem('pv-view', next);
+  };
 
   const me = useQuery({
     queryKey: ['me'],
@@ -40,14 +68,16 @@ export default function DrivePage() {
     retry: false,
     enabled: me.isSuccess,
   });
+  const connected = connection.data?.connection.status === 'connected';
 
   const drive = useQuery({
     queryKey: ['drive', folderId],
     queryFn: () => driveApi.list(folderId),
-    enabled: me.isSuccess && connection.data?.connection.status === 'connected',
-    // While the engine is shipping chunks, keep the listing honest.
+    enabled: me.isSuccess && connected,
     refetchInterval: (query) =>
-      query.state.data?.files.some((file) => file.status === 'uploading') ? 2000 : false,
+      query.state.data?.files.some((file) => file.status === 'uploading') || uploadCount > 0
+        ? 2500
+        : false,
   });
 
   useEffect(() => {
@@ -56,39 +86,34 @@ export default function DrivePage() {
     }
   }, [me.isError, router]);
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['drive'] });
+  const refresh = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ['drive'] }),
+    [queryClient],
+  );
   const onError = (err: unknown) =>
     setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
+
+  const onDrop = useCallback(
+    (accepted: File[]) => {
+      setError(null);
+      for (const file of accepted) {
+        void startUpload(file, folderId, refresh);
+      }
+    },
+    [folderId, refresh],
+  );
+  const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
+    onDrop,
+    noClick: true,
+    noKeyboard: true,
+    disabled: !connected,
+  });
 
   const createFolder = useMutation({
     mutationFn: (name: string) => driveApi.createFolder({ name, parentId: folderId }),
     onSuccess: refresh,
     onError,
   });
-
-  async function onPickFiles(files: FileList | null) {
-    if (!files?.length) {
-      return;
-    }
-    setError(null);
-    for (const file of Array.from(files)) {
-      const key = `${file.name}-${Date.now()}`;
-      setUploads((current) => ({ ...current, [key]: 0 }));
-      try {
-        await uploadFileInParts(file, folderId, (fraction) =>
-          setUploads((current) => ({ ...current, [key]: fraction })),
-        );
-      } catch (err) {
-        onError(err);
-      } finally {
-        setUploads((current) => {
-          const { [key]: _done, ...rest } = current;
-          return rest;
-        });
-        await refresh();
-      }
-    }
-  }
 
   async function act(action: () => Promise<unknown>) {
     setError(null);
@@ -100,85 +125,28 @@ export default function DrivePage() {
     }
   }
 
-  function fileActions(file: FileDto) {
+  if (me.isPending || (me.isSuccess && connection.isPending)) {
     return (
-      <span className="pv-row-actions">
-        {file.status === 'ready' && (
-          <button type="button" onClick={() => act(() => downloadFile(file))}>
-            Download
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            const name = window.prompt('New name', file.name);
-            if (name && name !== file.name) {
-              void act(() => driveApi.updateFile(file.id, { name }));
-            }
-          }}
-        >
-          Rename
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (
-              window.confirm(
-                `Delete "${file.name}"? This also deletes it from your connected storage.`,
-              )
-            ) {
-              void act(() => driveApi.deleteFile(file.id));
-            }
-          }}
-        >
-          Delete
-        </button>
-      </span>
-    );
-  }
-
-  if (me.isPending || connection.isPending) {
-    return (
-      <main className="pv-shell pv-shell--wide">
-        <p className="pv-footnote">Opening your universe…</p>
-      </main>
+      <div className="pv-app">
+        <p className="pv-footnote" style={{ marginTop: '20vh' }}>
+          <span className="pv-spinner" /> Opening your universe…
+        </p>
+      </div>
     );
   }
   if (me.isError) {
     return null;
   }
 
-  const conn = connection.data?.connection;
-
   return (
-    <main className="pv-shell pv-shell--wide">
-      <header className="pv-drive-header">
-        <span className="pv-brand">Pocketverse</span>
-        <span>
-          {user?.email ?? me.data?.user.email}{' '}
-          <button
-            className="pv-linklike"
-            type="button"
-            onClick={() =>
-              void api
-                .logout()
-                .catch(() => undefined)
-                .then(() => {
-                  clearSession();
-                  router.replace('/');
-                })
-            }
-          >
-            Sign out
-          </button>
-        </span>
-      </header>
+    <div className="pv-app">
+      <AppHeader>{connected && <SearchBox onOpen={(file) => setPreview(file)} />}</AppHeader>
 
-      {conn?.status !== 'connected' ? (
-        <div className="pv-card">
-          <h1>Your drive</h1>
-          <span className="pv-badge">○ Storage not connected</span>
-          <p className="pv-sub">Connect your own storage to give your files a home.</p>
+      {!connected ? (
+        <div className="pv-card" style={{ textAlign: 'center', marginTop: 'var(--pv-s6)' }}>
+          <UploadPortal width={40} height={40} style={{ color: 'var(--pv-accent)' }} />
+          <h1 style={{ marginTop: 'var(--pv-s3)' }}>Connect your storage</h1>
+          <p className="pv-sub">Give your files a home in storage you control.</p>
           <Link href="/connect">
             <button className="pv-button" type="button">
               Connect storage
@@ -186,30 +154,13 @@ export default function DrivePage() {
           </Link>
         </div>
       ) : (
-        <div className="pv-card">
-          <nav className="pv-breadcrumb">
-            <button className="pv-linklike" type="button" onClick={() => setFolderId(null)}>
-              My universe
-            </button>
-            {drive.data?.breadcrumb.map((crumb) => (
-              <span key={crumb.id}>
-                {' / '}
-                <button className="pv-linklike" type="button" onClick={() => setFolderId(crumb.id)}>
-                  {crumb.name}
-                </button>
-              </span>
-            ))}
-          </nav>
+        <div {...getRootProps({ className: `pv-dropzone${isDragActive ? ' active' : ''}` })}>
+          <input {...getInputProps()} />
 
-          {error && (
-            <div className="pv-error" role="alert">
-              {error}
-            </div>
-          )}
-
-          <div className="pv-toolbar">
-            <button className="pv-button" type="button" onClick={() => fileInput.current?.click()}>
-              Upload files
+          <div className="pv-drive-toolbar">
+            <Breadcrumb breadcrumb={drive.data?.breadcrumb ?? []} onNavigate={setFolderId} />
+            <button className="pv-button" type="button" onClick={open}>
+              <UploadPortal width={16} height={16} /> Upload
             </button>
             <button
               className="pv-button pv-button--ghost"
@@ -221,110 +172,292 @@ export default function DrivePage() {
                 }
               }}
             >
-              New folder
+              <FolderIcon width={16} height={16} /> New folder
             </button>
-            <input
-              ref={fileInput}
-              type="file"
-              multiple
-              hidden
-              onChange={(event) => {
-                void onPickFiles(event.target.files);
-                event.target.value = '';
-              }}
-            />
+            <span style={{ display: 'flex', gap: 2 }}>
+              <button
+                className="pv-iconbtn"
+                type="button"
+                aria-label="List view"
+                onClick={() => changeView('list')}
+                style={view === 'list' ? { color: 'var(--pv-accent)' } : undefined}
+              >
+                <ListIcon />
+              </button>
+              <button
+                className="pv-iconbtn"
+                type="button"
+                aria-label="Grid view"
+                onClick={() => changeView('grid')}
+                style={view === 'grid' ? { color: 'var(--pv-accent)' } : undefined}
+              >
+                <GridIcon />
+              </button>
+            </span>
           </div>
 
-          {Object.entries(uploads).map(([key, fraction]) => (
-            <div className="pv-progress" key={key}>
-              <span className="pv-progress-label">
-                Uploading {key.replace(/-\d+$/, '')} — {Math.round(fraction * 100)}%
-              </span>
-              <span className="pv-progress-track">
-                <span className="pv-progress-bar" style={{ width: `${fraction * 100}%` }} />
-              </span>
+          {isDragActive && <div className="pv-drop-hint">Drop files to upload to this folder</div>}
+
+          {error && (
+            <div className="pv-error" role="alert">
+              {error}
             </div>
-          ))}
+          )}
 
-          <ul className="pv-list">
-            {drive.data?.folders.map((folder) => (
-              <li key={folder.id} className="pv-row">
-                <button
-                  className="pv-linklike pv-row-name"
-                  type="button"
-                  onClick={() => setFolderId(folder.id)}
-                >
-                  📁 {folder.name}
-                </button>
-                <span className="pv-row-actions">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const name = window.prompt('New name', folder.name);
-                      if (name && name !== folder.name) {
-                        void act(() => driveApi.updateFolder(folder.id, { name }));
-                      }
-                    }}
-                  >
-                    Rename
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Delete "${folder.name}" and everything inside it? Files are also deleted from your connected storage.`,
-                        )
-                      ) {
-                        void act(() => driveApi.deleteFolder(folder.id));
-                      }
-                    }}
-                  >
-                    Delete
-                  </button>
-                </span>
-              </li>
-            ))}
+          <UploadPanel onSettled={refresh} />
 
-            {drive.data?.files.map((file) => (
-              <li key={file.id} className="pv-row">
-                <span className="pv-row-name">
-                  📄 {file.name}
-                  <span className="pv-row-meta">
-                    {formatSize(file.size)}
-                    {file.status === 'uploading' &&
-                      ` · syncing to your storage… ${file.syncProgress ?? 0}%`}
-                    {file.status === 'error' && ' · ⚠ upload failed'}
-                    {file.status === 'ready' && ' · ✓ stored'}
-                  </span>
-                </span>
-                {fileActions(file)}
-              </li>
-            ))}
-
-            {drive.data && drive.data.folders.length === 0 && drive.data.files.length === 0 && (
-              <li className="pv-footnote">Nothing here yet — upload your first file.</li>
-            )}
-          </ul>
+          {drive.isPending ? (
+            <p className="pv-footnote" style={{ padding: 'var(--pv-s6)' }}>
+              <span className="pv-spinner" /> Loading…
+            </p>
+          ) : drive.data && drive.data.folders.length === 0 && drive.data.files.length === 0 ? (
+            <EmptyState icon={<UploadPortal width={44} height={44} />} title="Nothing here yet">
+              Drag files anywhere on this page, or use the Upload button.
+            </EmptyState>
+          ) : view === 'grid' ? (
+            <GridView
+              data={drive.data!}
+              onOpenFolder={setFolderId}
+              onPreview={setPreview}
+              onMove={setMoving}
+              act={act}
+            />
+          ) : (
+            <ListView
+              data={drive.data!}
+              onOpenFolder={setFolderId}
+              onPreview={setPreview}
+              onMove={setMoving}
+              act={act}
+            />
+          )}
         </div>
       )}
-    </main>
+
+      {preview && <PreviewModal file={preview} onClose={() => setPreview(null)} />}
+      {moving && <MoveDialog file={moving} onClose={() => setMoving(null)} onMoved={refresh} />}
+    </div>
   );
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-  const units = ['KB', 'MB', 'GB', 'TB'];
-  let value = bytes;
-  let unit = 'B';
-  for (const next of units) {
-    if (value < 1024) {
-      break;
-    }
-    value /= 1024;
-    unit = next;
-  }
-  return `${value.toFixed(value >= 100 ? 0 : 1)} ${unit}`;
+function Breadcrumb({
+  breadcrumb,
+  onNavigate,
+}: {
+  breadcrumb: { id: string; name: string }[];
+  onNavigate: (id: string | null) => void;
+}) {
+  return (
+    <nav className="pv-breadcrumb">
+      <button
+        type="button"
+        onClick={() => onNavigate(null)}
+        className={breadcrumb.length === 0 ? 'current' : ''}
+      >
+        My universe
+      </button>
+      {breadcrumb.map((crumb, index) => (
+        <span key={crumb.id} style={{ display: 'inline-flex', alignItems: 'center' }}>
+          <span style={{ opacity: 0.5 }}>/</span>
+          <button
+            type="button"
+            onClick={() => onNavigate(crumb.id)}
+            className={index === breadcrumb.length - 1 ? 'current' : ''}
+          >
+            {crumb.name}
+          </button>
+        </span>
+      ))}
+    </nav>
+  );
+}
+
+interface ViewProps {
+  data: { folders: FolderDto[]; files: FileDto[] };
+  onOpenFolder: (id: string) => void;
+  onPreview: (file: FileDto) => void;
+  onMove: (file: FileDto) => void;
+  act: (action: () => Promise<unknown>) => Promise<void>;
+}
+
+function fileActions(file: FileDto, props: ViewProps) {
+  return (
+    <span className="pv-row-actions">
+      {file.status === 'ready' && canPreview(file.mimeType) && (
+        <button
+          className="pv-iconbtn"
+          type="button"
+          title="Preview"
+          onClick={() => props.onPreview(file)}
+        >
+          <EyeIcon width={16} height={16} />
+        </button>
+      )}
+      {file.status === 'ready' && (
+        <button
+          className="pv-iconbtn"
+          type="button"
+          title="Download"
+          onClick={() => void downloadFile(file)}
+        >
+          <DownloadIcon width={16} height={16} />
+        </button>
+      )}
+      <button
+        className="pv-iconbtn"
+        type="button"
+        title="Rename"
+        onClick={() => {
+          const name = window.prompt('New name', file.name);
+          if (name && name !== file.name) {
+            void props.act(() => driveApi.updateFile(file.id, { name }));
+          }
+        }}
+      >
+        <PencilIcon width={16} height={16} />
+      </button>
+      <button className="pv-iconbtn" type="button" title="Move" onClick={() => props.onMove(file)}>
+        <MoveIcon width={16} height={16} />
+      </button>
+      <button
+        className="pv-iconbtn"
+        type="button"
+        title="Delete"
+        onClick={() => {
+          if (
+            window.confirm(
+              `Delete “${file.name}”? This also deletes it from your connected storage.`,
+            )
+          ) {
+            void props.act(() => driveApi.deleteFile(file.id));
+          }
+        }}
+      >
+        <TrashIcon width={16} height={16} />
+      </button>
+    </span>
+  );
+}
+
+function folderActions(folder: FolderDto, props: ViewProps) {
+  return (
+    <span className="pv-row-actions">
+      <button
+        className="pv-iconbtn"
+        type="button"
+        title="Rename"
+        onClick={() => {
+          const name = window.prompt('New name', folder.name);
+          if (name && name !== folder.name) {
+            void props.act(() => driveApi.updateFolder(folder.id, { name }));
+          }
+        }}
+      >
+        <PencilIcon width={16} height={16} />
+      </button>
+      <button
+        className="pv-iconbtn"
+        type="button"
+        title="Delete"
+        onClick={() => {
+          if (
+            window.confirm(
+              `Delete “${folder.name}” and everything inside it? Files are also deleted from your connected storage.`,
+            )
+          ) {
+            void props.act(() => driveApi.deleteFolder(folder.id));
+          }
+        }}
+      >
+        <TrashIcon width={16} height={16} />
+      </button>
+    </span>
+  );
+}
+
+function ListView(props: ViewProps) {
+  return (
+    <ul className="pv-list">
+      {props.data.folders.map((folder) => (
+        <li key={folder.id} className="pv-row">
+          <span className="pv-row-icon">
+            <FolderIcon />
+          </span>
+          <span className="pv-row-main">
+            <button
+              className="pv-row-name"
+              type="button"
+              onClick={() => props.onOpenFolder(folder.id)}
+            >
+              {folder.name}
+            </button>
+            <span className="pv-row-meta">Folder</span>
+          </span>
+          {folderActions(folder, props)}
+        </li>
+      ))}
+      {props.data.files.map((file) => {
+        const Icon = iconForMime(file.mimeType);
+        return (
+          <li key={file.id} className="pv-row">
+            <span className="pv-row-icon">
+              <Icon />
+            </span>
+            <span className="pv-row-main">
+              <span className="pv-row-name" style={{ cursor: 'default' }}>
+                {file.name}
+              </span>
+              <span
+                className="pv-row-meta"
+                style={{ display: 'flex', gap: 'var(--pv-s2)', alignItems: 'center' }}
+              >
+                {formatSize(file.size)}
+                <StatusBadge status={file.status} syncProgress={file.syncProgress} />
+              </span>
+            </span>
+            {fileActions(file, props)}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function GridView(props: ViewProps) {
+  return (
+    <div className="pv-grid">
+      {props.data.folders.map((folder) => (
+        <div key={folder.id} className="pv-grid-card">
+          <span className="pv-row-icon">
+            <FolderIcon width={26} height={26} />
+          </span>
+          <button
+            className="pv-row-name"
+            type="button"
+            onClick={() => props.onOpenFolder(folder.id)}
+            style={{ fontWeight: 500 }}
+          >
+            {folder.name}
+          </button>
+          {folderActions(folder, props)}
+        </div>
+      ))}
+      {props.data.files.map((file) => {
+        const Icon = iconForMime(file.mimeType);
+        return (
+          <div key={file.id} className="pv-grid-card">
+            <span className="pv-row-icon">
+              <Icon width={26} height={26} />
+            </span>
+            <span className="pv-row-name" style={{ cursor: 'default', fontWeight: 500 }}>
+              {file.name}
+            </span>
+            <span className="pv-row-meta">{formatSize(file.size)}</span>
+            <StatusBadge status={file.status} syncProgress={file.syncProgress} />
+            {fileActions(file, props)}
+          </div>
+        );
+      })}
+    </div>
+  );
 }

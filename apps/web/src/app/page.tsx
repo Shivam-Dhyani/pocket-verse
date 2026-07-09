@@ -1,13 +1,16 @@
 import Link from 'next/link';
+import { LockIcon, OrbitLogo, ShieldIcon, UploadPortal } from '@/components/icons';
 
 export default function LandingPage() {
   return (
     <main className="pv-hero">
-      <span className="pv-brand">Pocketverse</span>
+      <span className="pv-brand">
+        <OrbitLogo width={24} height={24} /> Pocketverse
+      </span>
       <h1>A whole universe in your pocket.</h1>
       <p>
-        A calm, familiar home for your files — kept in storage you control, encrypted connections,
-        no surprises. We tell you exactly where everything lives.
+        A calm, familiar home for your files — kept in storage you control, with encrypted
+        connections and no surprises. We tell you exactly where everything lives.
       </p>
       <div className="pv-hero-actions">
         <Link href="/register">
@@ -20,6 +23,24 @@ export default function LandingPage() {
             Sign in
           </button>
         </Link>
+      </div>
+
+      <div className="pv-hero-points">
+        <div className="pv-card">
+          <LockIcon />
+          <h3>Encrypted at rest</h3>
+          <p>Your storage connection is sealed with AES-256-GCM and never leaves our vault.</p>
+        </div>
+        <div className="pv-card">
+          <UploadPortal />
+          <h3>Your storage, your files</h3>
+          <p>Files stream to storage you own. We keep only the map, never the bytes.</p>
+        </div>
+        <div className="pv-card">
+          <ShieldIcon />
+          <h3>Honest by design</h3>
+          <p>Real progress, plain-language risks, and an activity log you can read.</p>
+        </div>
       </div>
     </main>
   );

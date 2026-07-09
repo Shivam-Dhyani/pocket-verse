@@ -8,6 +8,7 @@ import type { File as FileRow, PrismaClient, UploadSession } from '@prisma/clien
 import type {
   CreateUploadInput,
   FileDto,
+  SearchResultDto,
   UpdateFileInput,
   UploadSessionDto,
 } from '@pocketverse/shared';
@@ -277,6 +278,27 @@ export function createFilesService({
         throw notFound();
       }
       await removeFileEverywhere(session.file.id, userId, session.file.chunks);
+    },
+
+    /** Name search across the whole drive (owner-scoped, case-insensitive). */
+    async search(userId: string, query: string): Promise<SearchResultDto[]> {
+      const trimmed = query.trim();
+      if (!trimmed) {
+        return [];
+      }
+      const files = await prisma.file.findMany({
+        where: { ownerId: userId, name: { contains: trimmed, mode: 'insensitive' } },
+        orderBy: { name: 'asc' },
+        take: 50,
+        include: {
+          folder: { select: { name: true } },
+          chunks: { select: { size: true, status: true, progress: true } },
+        },
+      });
+      return files.map((file) => ({
+        ...toFileDto(file, file.chunks),
+        folderName: file.folder?.name ?? null,
+      }));
     },
 
     async getFile(userId: string, fileId: string): Promise<FileDto> {

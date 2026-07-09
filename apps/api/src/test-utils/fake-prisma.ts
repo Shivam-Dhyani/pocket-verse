@@ -307,6 +307,30 @@ export function createFakePrisma() {
         auditEvents.push(row);
         return { ...row };
       },
+      findMany: async ({
+        where,
+        take,
+        cursor,
+        skip,
+      }: {
+        where: { userId: string };
+        orderBy?: unknown;
+        take?: number;
+        cursor?: { id: string };
+        skip?: number;
+      }) => {
+        // Newest first; insertion order breaks createdAt ties deterministically.
+        const rows = auditEvents
+          .filter((event) => event.userId === where.userId)
+          .slice()
+          .reverse();
+        let start = 0;
+        if (cursor) {
+          const index = rows.findIndex((event) => event.id === cursor.id);
+          start = index === -1 ? rows.length : index + (skip ?? 0);
+        }
+        return rows.slice(start, start + (take ?? rows.length)).map((row) => ({ ...row }));
+      },
     },
     folder: {
       findUnique: async ({ where }: { where: { id: string } }) => {
@@ -362,6 +386,9 @@ export function createFakePrisma() {
         deleteFolderCascade(where.id);
         return { ...row };
       },
+      count: async ({ where }: { where: { ownerId: string } }) => {
+        return [...folders.values()].filter((f) => f.ownerId === where.ownerId).length;
+      },
     },
     file: {
       findUnique: async ({
@@ -382,18 +409,40 @@ export function createFakePrisma() {
       },
       findMany: async ({
         where,
+        take,
       }: {
-        where: { ownerId: string; folderId?: IdFilter };
+        where: {
+          ownerId: string;
+          folderId?: IdFilter;
+          name?: { contains: string; mode?: string };
+        };
         orderBy?: unknown;
-        include?: { chunks?: unknown };
+        take?: number;
+        include?: { chunks?: unknown; folder?: unknown };
       }) => {
         const rows = [...files.values()].filter(
-          (f) => f.ownerId === where.ownerId && matchesIdFilter(f.folderId, where.folderId),
+          (f) =>
+            f.ownerId === where.ownerId &&
+            matchesIdFilter(f.folderId, where.folderId) &&
+            (where.name === undefined ||
+              f.name.toLowerCase().includes(where.name.contains.toLowerCase())),
         );
-        return byName(rows).map((row) => ({
+        const sorted = byName(rows).slice(0, take ?? rows.length);
+        return sorted.map((row) => ({
           ...row,
           chunks: chunksOf(row.id).map((c) => ({ ...c })),
+          folder: row.folderId ? (folders.get(row.folderId) ?? null) : null,
         }));
+      },
+      count: async ({ where }: { where: { ownerId: string; status?: FileRow['status'] } }) => {
+        return [...files.values()].filter(
+          (f) => f.ownerId === where.ownerId && (!where.status || f.status === where.status),
+        ).length;
+      },
+      aggregate: async ({ where }: { where: { ownerId: string } }) => {
+        const rows = [...files.values()].filter((f) => f.ownerId === where.ownerId);
+        const sum = rows.reduce((total, row) => total + row.size, 0n);
+        return { _count: rows.length, _sum: { size: rows.length ? sum : null } };
       },
       create: async ({
         data,

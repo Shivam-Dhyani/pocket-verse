@@ -43,16 +43,23 @@ export function createFilesRouter(service: FilesService, jwt: JwtHelpers): Route
   // Registered before the bearer guard: token-authenticated navigation.
   router.get('/:id/download', requireAuthOrDownloadToken(jwt), async (req, res) => {
     const { file, size, stream } = await service.download(req.user!.id, String(req.params.id));
+    // inline → previews render in the page; attachment → save dialog.
+    const disposition = req.query.disposition === 'inline' ? 'inline' : 'attachment';
     res.setHeader('Content-Type', file.mimeType);
     res.setHeader('Content-Length', size.toString());
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      `${disposition}; filename*=UTF-8''${encodeURIComponent(file.name)}`,
     );
     await streamToResponse(stream, req, res);
   });
 
   router.use(requireAuth(jwt));
+
+  router.get('/search', async (req, res) => {
+    const query = typeof req.query.q === 'string' ? req.query.q : '';
+    res.json({ results: await service.search(req.user!.id, query) });
+  });
 
   router.post('/:id/download-token', async (req, res) => {
     // Ownership (and existence) check happens in getFile.

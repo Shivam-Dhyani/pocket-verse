@@ -3,11 +3,11 @@ import type {
   DriveListing,
   FileDto,
   FolderDto,
+  SearchResultDto,
   UpdateFileInput,
   UpdateFolderInput,
-  UploadSessionDto,
 } from '@pocketverse/shared';
-import { API_URL, ApiError, apiFetch, request } from '@/lib/api';
+import { API_URL, request } from '@/lib/api';
 
 export const driveApi = {
   list: (folderId: string | null) =>
@@ -17,6 +17,10 @@ export const driveApi = {
         auth: true,
       },
     ),
+  search: (query: string) =>
+    request<{ results: SearchResultDto[] }>(`/api/files/search?q=${encodeURIComponent(query)}`, {
+      auth: true,
+    }),
   createFolder: (input: CreateFolderInput) =>
     request<{ folder: FolderDto }>('/api/folders', { method: 'POST', body: input, auth: true }),
   updateFolder: (id: string, input: UpdateFolderInput) =>
@@ -33,54 +37,19 @@ export const driveApi = {
 };
 
 /**
- * Resumable part-by-part upload with REAL progress: each tick is a part the
- * server has acknowledged and staged — never an estimate.
+ * A short-lived tokenized URL for a file — used for previews (inline) and
+ * native-manager downloads (attachment). The token authorizes a plain
+ * navigation, so no header is needed.
  */
-export async function uploadFileInParts(
-  file: File,
-  folderId: string | null,
-  onProgress: (fraction: number) => void,
-): Promise<void> {
-  const { upload } = await request<{ upload: UploadSessionDto }>('/api/files/uploads', {
+export async function fileUrl(
+  fileId: string,
+  disposition: 'inline' | 'attachment',
+): Promise<string> {
+  const { token } = await request<{ token: string }>(`/api/files/${fileId}/download-token`, {
     method: 'POST',
     auth: true,
-    body: {
-      name: file.name,
-      size: file.size,
-      mimeType: file.type || 'application/octet-stream',
-      folderId,
-    },
   });
-
-  let part = upload.nextPart;
-  while (part < upload.totalParts) {
-    const slice = file.slice(part * upload.partSize, (part + 1) * upload.partSize);
-    const res = await apiFetch(`/api/files/uploads/${upload.uploadId}/parts/${part}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/octet-stream' },
-      body: slice,
-    });
-
-    if (res.ok) {
-      part += 1;
-      onProgress(part / upload.totalParts);
-      continue;
-    }
-
-    const payload = (await res.json().catch(() => null)) as {
-      error?: { code?: string; message?: string; nextPart?: number };
-    } | null;
-    // The server tells us exactly where to resume from (restart, lost staging…).
-    if (res.status === 409 && typeof payload?.error?.nextPart === 'number') {
-      part = payload.error.nextPart;
-      continue;
-    }
-    throw new ApiError(
-      res.status,
-      payload?.error?.code ?? 'UPLOAD_FAILED',
-      payload?.error?.message ?? 'The upload failed. Your progress is saved — try again.',
-    );
-  }
+  return `${API_URL}/api/files/${fileId}/download?token=${encodeURIComponent(token)}&disposition=${disposition}`;
 }
 
 /**
@@ -89,14 +58,15 @@ export async function uploadFileInParts(
  * multi-GB files never pass through page memory.
  */
 export async function downloadFile(file: FileDto): Promise<void> {
-  const { token } = await request<{ token: string }>(`/api/files/${file.id}/download-token`, {
-    method: 'POST',
-    auth: true,
-  });
   const anchor = document.createElement('a');
-  anchor.href = `${API_URL}/api/files/${file.id}/download?token=${encodeURIComponent(token)}`;
+  anchor.href = await fileUrl(file.id, 'attachment');
   anchor.download = file.name;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
+}
+
+/** Whether a file type can be previewed inline in the browser. */
+export function canPreview(mimeType: string): boolean {
+  return mimeType.startsWith('image/') || mimeType === 'application/pdf';
 }

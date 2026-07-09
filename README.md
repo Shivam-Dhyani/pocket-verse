@@ -7,7 +7,7 @@ private cloud storage account. Your files never sit on our servers; we hold only
 metadata and connection credentials, and we're honest with you about exactly what we can and
 cannot see.
 
-**Status:** Phase 3 of 5 — the core storage engine is live. 🚧 Built in public.
+**Status:** Phase 4 of 5 — the Drive UI and trust surfaces. 🚧 Built in public.
 
 ## Monorepo layout
 
@@ -64,6 +64,25 @@ packages/shared Zod schemas and types shared by both
 - Deleting anything deletes it from the user's storage too — stated plainly in the UI before
   confirming, never silently.
 
+## Drive UI & trust surfaces (Phase 4)
+
+- **Design system:** deep-space, dark-mode-first tokens (color, spacing, type, motion) with a
+  clean light theme and a persisted toggle; Space Grotesk + Inter (self-hosted, no external font
+  fetch); an inline SVG icon set — no icon library. See `apps/web/src/app/globals.css`.
+- **File browser:** grid/list toggle, breadcrumbs, drag-and-drop upload (react-dropzone) with
+  **real** acknowledged-parts progress and **pause/resume** (the server's resume cursor makes it
+  free), per-file status badges with live sync %, inline image/PDF previews, move-to-folder
+  dialog, and designed empty/loading/error states.
+- **Search** across your whole drive (`GET /api/files/search`), with the containing folder shown.
+- **Honest onboarding:** the `/connect` wizard leads with a full disclosures screen — the "what
+  we never do" list, inactivity-deletion warning, and ToS note — gated by a real (unchecked)
+  "I understand" checkbox before any connection begins.
+- **Security page** (`/security`): plain-language explanation of the encryption model and, per
+  ADR-0001, an honest statement of what the server can and cannot decrypt — no false
+  zero-knowledge claims.
+- **Activity log** (`/activity`): the audit events recorded since Phase 2, in friendly language
+  with relative timestamps and cursor pagination.
+
 ## Local development
 
 Requirements: Node ≥ 22, pnpm ≥ 10, and Postgres (any local instance or a free
@@ -113,6 +132,6 @@ and invalidates the session remotely — the channel and its contents stay in yo
 | ----- | ------------------------------------------------------------------- | -------------- |
 | 1     | Monorepo, encryption core, user auth                                | ✅             |
 | 2     | Storage connection (private channel, encrypted sessions, ADR)       | ✅             |
-| 3     | Streaming upload/download engine, chunking, folder CRUD             | ✅ this branch |
-| 4     | Drive UI — design system, browser, honest onboarding, security page | ⏳             |
+| 3     | Streaming upload/download engine, chunking, folder CRUD             | ✅             |
+| 4     | Drive UI — design system, browser, honest onboarding, security page | ✅ this branch |
 | 5     | Hardening, deploy (Vercel + Render/Koyeb + Neon + Upstash), runbook | ⏳             |

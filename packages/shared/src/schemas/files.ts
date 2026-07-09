@@ -80,6 +80,11 @@ export const driveListingSchema = z.object({
   files: z.array(fileDtoSchema),
 });
 
+export const searchResultDtoSchema = fileDtoSchema.extend({
+  /** Name of the containing folder, or null when the file sits at the root. */
+  folderName: z.string().nullable(),
+});
+
 export const uploadSessionDtoSchema = z.object({
   uploadId: z.string(),
   fileId: z.string(),
@@ -94,6 +99,7 @@ export type UpdateFileInput = z.infer<typeof updateFileSchema>;
 export type CreateFolderInput = z.infer<typeof createFolderSchema>;
 export type UpdateFolderInput = z.infer<typeof updateFolderSchema>;
 export type FileDto = z.infer<typeof fileDtoSchema>;
+export type SearchResultDto = z.infer<typeof searchResultDtoSchema>;
 export type FolderDto = z.infer<typeof folderDtoSchema>;
 export type DriveListing = z.infer<typeof driveListingSchema>;
 export type UploadSessionDto = z.infer<typeof uploadSessionDtoSchema>;

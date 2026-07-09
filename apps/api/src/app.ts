@@ -13,6 +13,7 @@ import type { TelegramGateway } from './lib/telegram/gateway.js';
 import { createGramjsGateway } from './lib/telegram/gramjs.js';
 import { createErrorHandler, notFoundHandler } from './middleware/errors.js';
 import { createRateLimiters } from './middleware/rateLimit.js';
+import { createActivityRouter, createStatsRouter } from './modules/activity/activity.routes.js';
 import { createAuditService } from './modules/audit/audit.service.js';
 import { createAuthRouter } from './modules/auth/auth.routes.js';
 import { createAuthService } from './modules/auth/auth.service.js';
@@ -113,6 +114,8 @@ export function createApp({ env, prisma, logger, gateway, queue }: AppDeps): exp
   app.use('/api/files', limiters.uploads, createFilesRouter(filesService, jwt));
   app.use('/api/folders', createFoldersRouter(foldersService, jwt));
   app.use('/api/drive', createDriveRouter(foldersService, jwt));
+  app.use('/api/activity', createActivityRouter(prisma, jwt));
+  app.use('/api/stats', createStatsRouter(prisma, jwt));
 
   app.use(notFoundHandler);
   app.use(createErrorHandler(logger, { includeHints: env.NODE_ENV !== 'production' }));
