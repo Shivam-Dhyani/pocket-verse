@@ -82,6 +82,35 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
       return toFolderDto(folder);
     },
 
+    /**
+     * Walk a folder path, creating missing segments and reusing existing ones.
+     * Powers folder uploads: the client resolves each file's directory to a
+     * real folder id so the tree is recreated exactly. Idempotent.
+     */
+    async ensureFolderPath(
+      userId: string,
+      parentId: string | null,
+      segments: string[],
+    ): Promise<{ folderId: string }> {
+      if (parentId) {
+        await requireFolder(userId, parentId);
+      }
+      let currentId = parentId;
+      for (const name of segments) {
+        const existing = await prisma.folder.findFirst({
+          where: { ownerId: userId, parentId: currentId, name },
+        });
+        currentId = existing
+          ? existing.id
+          : (await prisma.folder.create({ data: { name, parentId: currentId, ownerId: userId } }))
+              .id;
+      }
+      if (!currentId) {
+        throw new AppError(400, 'INVALID_PATH', 'A folder path must have at least one segment.');
+      }
+      return { folderId: currentId };
+    },
+
     async updateFolder(
       userId: string,
       folderId: string,

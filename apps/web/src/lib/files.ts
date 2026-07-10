@@ -34,7 +34,31 @@ export const driveApi = {
   updateFile: (id: string, input: UpdateFileInput) =>
     request<{ file: FileDto }>(`/api/files/${id}`, { method: 'PATCH', body: input, auth: true }),
   deleteFile: (id: string) => request<void>(`/api/files/${id}`, { method: 'DELETE', auth: true }),
+  ensureFolderPath: (parentId: string | null, segments: string[]) =>
+    request<{ folderId: string }>('/api/folders/ensure-path', {
+      method: 'POST',
+      body: { parentId, segments },
+      auth: true,
+    }),
 };
+
+/**
+ * The path of a file relative to the dropped/picked folder root — set by the
+ * folder picker (webkitRelativePath) or react-dropzone (path). Falls back to
+ * the bare name for a plain file. Returns { segments: [...dirs], name }.
+ */
+export function relativePathOf(file: File): { dirs: string[]; name: string } {
+  const raw =
+    (file as File & { webkitRelativePath?: string; path?: string }).webkitRelativePath ||
+    (file as File & { path?: string }).path ||
+    file.name;
+  const parts = raw
+    .replace(/^\.?\/+/, '') // strip leading ./ or /
+    .split('/')
+    .filter((segment) => segment && segment !== '.' && segment !== '..');
+  const name = parts.pop() ?? file.name;
+  return { dirs: parts, name };
+}
 
 /**
  * A short-lived tokenized URL for a file — used for previews (inline) and

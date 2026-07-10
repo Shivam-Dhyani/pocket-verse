@@ -49,6 +49,14 @@ export const updateFolderSchema = z
     'Provide a new name or a destination folder',
   );
 
+/** Get-or-create a nested folder path (for uploading whole folder trees). */
+export const ensureFolderPathSchema = z.object({
+  parentId: z.string().nullish(),
+  segments: z.array(entryNameSchema).min(1).max(64),
+});
+
+export type EnsureFolderPathInput = z.infer<typeof ensureFolderPathSchema>;
+
 export const fileStatusValues = ['uploading', 'ready', 'error'] as const;
 
 export const fileDtoSchema = z.object({

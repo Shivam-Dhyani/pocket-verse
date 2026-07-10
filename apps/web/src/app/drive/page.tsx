@@ -3,12 +3,12 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import type { FileDto, FolderDto } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
-import { canPreview, downloadFile, driveApi } from '@/lib/files';
+import { downloadFile, driveApi, relativePathOf } from '@/lib/files';
 import { activeUploadFileIds, startUpload, useUploadsStore } from '@/stores/uploads';
 import { useAuthStore } from '@/stores/auth';
 import { AppHeader } from '@/components/app-header';
@@ -20,7 +20,6 @@ import { useDialogs } from '@/components/dialogs';
 import { EmptyState, StatusBadge, formatSize } from '@/components/ui';
 import {
   DownloadIcon,
-  EyeIcon,
   FolderIcon,
   GridIcon,
   iconForMime,
@@ -103,21 +102,48 @@ export default function DrivePage() {
   const onError = (err: unknown) =>
     setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
 
-  const onDrop = useCallback(
-    (accepted: File[]) => {
+  // Uploads files while recreating any folder structure they carry (dropped
+  // folders via react-dropzone `path`, or the folder picker's
+  // webkitRelativePath). Each unique directory is resolved to a real folder id
+  // exactly once, so the tree lands nested — just like copying it on your device.
+  const ingest = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) {
+        return;
+      }
       setError(null);
-      for (const file of accepted) {
-        void startUpload(file, folderId, refresh);
+      const dirCache = new Map<string, Promise<string | null>>();
+      dirCache.set('', Promise.resolve(folderId));
+
+      for (const file of files) {
+        const { dirs } = relativePathOf(file);
+        const key = dirs.join('/');
+        if (!dirCache.has(key)) {
+          dirCache.set(
+            key,
+            driveApi.ensureFolderPath(folderId, dirs).then((result) => result.folderId),
+          );
+        }
+        try {
+          const targetId = await dirCache.get(key)!;
+          void startUpload(file, targetId, refresh);
+        } catch (err) {
+          onError(err);
+        }
       }
     },
     [folderId, refresh],
   );
+
+  const onDrop = useCallback((accepted: File[]) => void ingest(accepted), [ingest]);
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
     noClick: true,
     noKeyboard: true,
     disabled: !connected,
   });
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadMenu, setUploadMenu] = useState(false);
 
   async function act(action: () => Promise<unknown>) {
     setError(null);
@@ -129,15 +155,11 @@ export default function DrivePage() {
     }
   }
 
-  // Clicking a file opens it: preview if the browser can render it, else download.
+  // Clicking a file opens it: previewable types render; others get a calm
+  // "open on your device" hand-off (handled inside the modal).
   function openFile(file: FileDto) {
-    if (file.status !== 'ready') {
-      return;
-    }
-    if (canPreview(file.mimeType)) {
+    if (file.status === 'ready') {
       setPreview(file);
-    } else {
-      void downloadFile(file);
     }
   }
 
@@ -244,9 +266,59 @@ export default function DrivePage() {
 
           <div className="pv-drive-toolbar">
             <Breadcrumb breadcrumb={drive.data?.breadcrumb ?? []} onNavigate={setFolderId} />
-            <button className="pv-button" type="button" onClick={open}>
-              <UploadPortal width={16} height={16} /> Upload
-            </button>
+            <div className="pv-menu-wrap">
+              <button
+                className="pv-button"
+                type="button"
+                onClick={() => setUploadMenu((open2) => !open2)}
+              >
+                <UploadPortal width={16} height={16} /> Upload
+              </button>
+              {uploadMenu && (
+                <>
+                  <div className="pv-menu-backdrop" onClick={() => setUploadMenu(false)} />
+                  <div className="pv-menu" role="menu">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMenu(false);
+                        open();
+                      }}
+                    >
+                      <UploadPortal width={16} height={16} /> Upload files
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMenu(false);
+                        folderInputRef.current?.click();
+                      }}
+                    >
+                      <FolderIcon width={16} height={16} /> Upload folder
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            <input
+              ref={(el) => {
+                if (el) {
+                  // Directory-picker attributes aren't in the React input types.
+                  el.setAttribute('webkitdirectory', '');
+                  el.setAttribute('directory', '');
+                }
+                folderInputRef.current = el;
+              }}
+              type="file"
+              multiple
+              hidden
+              onChange={(event) => {
+                if (event.target.files) {
+                  void ingest(Array.from(event.target.files));
+                }
+                event.target.value = '';
+              }}
+            />
             <button
               className="pv-button pv-button--ghost"
               type="button"
@@ -308,7 +380,6 @@ export default function DrivePage() {
                 files: visibleFiles,
                 onOpenFolder: setFolderId,
                 onOpenFile: openFile,
-                onPreview: setPreview,
                 onMove: setMoving,
                 onRenameFile: renameFile,
                 onDeleteFile: deleteFile,
@@ -364,7 +435,6 @@ interface ViewProps {
   files: FileDto[];
   onOpenFolder: (id: string) => void;
   onOpenFile: (file: FileDto) => void;
-  onPreview: (file: FileDto) => void;
   onMove: (file: FileDto) => void;
   onRenameFile: (file: FileDto) => void;
   onDeleteFile: (file: FileDto) => void;
@@ -376,16 +446,6 @@ function fileActions(file: FileDto, props: ViewProps) {
   return (
     // Clicks on the action buttons must not also trigger the row's open handler.
     <span className="pv-row-actions" onClick={(event) => event.stopPropagation()}>
-      {file.status === 'ready' && canPreview(file.mimeType) && (
-        <button
-          className="pv-iconbtn"
-          type="button"
-          title="Preview"
-          onClick={() => props.onPreview(file)}
-        >
-          <EyeIcon width={16} height={16} />
-        </button>
-      )}
       {file.status === 'ready' && (
         <button
           className="pv-iconbtn"

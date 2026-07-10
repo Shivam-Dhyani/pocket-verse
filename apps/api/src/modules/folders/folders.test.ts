@@ -91,6 +91,36 @@ describe('folders', () => {
     expect(inChild.body.currentFolder).toMatchObject({ totalBytes: 16, fileCount: 1 });
   });
 
+  it('ensure-path creates a nested tree once and reuses it on repeat', async () => {
+    const { api, prisma } = await setup();
+
+    const first = await api.post('/api/folders/ensure-path', {
+      parentId: null,
+      segments: ['Trip', '2026', 'Photos'],
+    });
+    expect(first.status).toBe(200);
+    expect(prisma._state.folders.size).toBe(3);
+
+    // Same path again: no new folders, same leaf id (get-or-create).
+    const again = await api.post('/api/folders/ensure-path', {
+      parentId: null,
+      segments: ['Trip', '2026', 'Photos'],
+    });
+    expect(prisma._state.folders.size).toBe(3);
+    expect(again.body.folderId).toBe(first.body.folderId);
+
+    // A sibling branch reuses the shared prefix (Trip/2026) and adds one folder.
+    await api.post('/api/folders/ensure-path', {
+      parentId: null,
+      segments: ['Trip', '2026', 'Videos'],
+    });
+    expect(prisma._state.folders.size).toBe(4);
+
+    // The recreated tree is navigable and correctly nested.
+    const root = await api.get('/api/drive');
+    expect(root.body.folders.map((f: { name: string }) => f.name)).toEqual(['Trip']);
+  });
+
   it('rejects duplicate names in the same parent', async () => {
     const { api } = await setup();
     await api.post('/api/folders', { name: 'Docs' });
