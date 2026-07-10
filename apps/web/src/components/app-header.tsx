@@ -7,11 +7,13 @@ import type { StatsDto } from '@pocketverse/shared';
 import { api, request } from '@/lib/api';
 import { ActivityIcon, OrbitLogo, ShieldIcon } from '@/components/icons';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { useDialogs } from '@/components/dialogs';
 import { formatSize } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth';
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   const router = useRouter();
+  const dialogs = useDialogs();
   const clearSession = useAuthStore((state) => state.clearSession);
   const accessToken = useAuthStore((state) => state.accessToken);
 
@@ -50,15 +52,23 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           aria-label="Sign out"
           style={{ width: 'auto', paddingInline: 10, fontSize: 'var(--pv-text-xs)' }}
           onClick={() => {
-            if (!window.confirm('Sign out of Pocketverse?')) {
-              return;
-            }
-            void api
-              .logout()
-              .catch(() => undefined)
-              .then(() => {
-                clearSession();
-                router.replace('/');
+            void dialogs
+              .confirm({
+                title: 'Sign out',
+                message: 'Sign out of Pocketverse?',
+                confirmLabel: 'Sign out',
+              })
+              .then((ok) => {
+                if (!ok) {
+                  return;
+                }
+                return api
+                  .logout()
+                  .catch(() => undefined)
+                  .then(() => {
+                    clearSession();
+                    router.replace('/');
+                  });
               });
           }}
         >

@@ -52,6 +52,45 @@ describe('folders', () => {
     ]);
   });
 
+  it('reports the current folder’s recursive size and file count', async () => {
+    const { api, queue } = await setup();
+    const parent = (await api.post('/api/folders', { name: 'Parent' })).body.folder;
+    const child = (await api.post('/api/folders', { name: 'Child', parentId: parent.id })).body
+      .folder;
+
+    // 8 bytes directly in Parent, 16 bytes nested in Parent/Child.
+    const put = async (name: string, bytes: number, folderId: string) => {
+      const content = randomBytes(bytes);
+      const create = await api.post('/api/files/uploads', { name, size: bytes, folderId });
+      const { uploadId, partSize, totalParts } = create.body.upload;
+      for (let part = 0; part < totalParts; part += 1) {
+        await api.putRaw(
+          `/api/files/uploads/${uploadId}/parts/${part}`,
+          content.subarray(part * partSize, (part + 1) * partSize),
+        );
+      }
+    };
+    await put('a.bin', 8, parent.id);
+    await put('b.bin', 16, child.id);
+    await queue.drain();
+
+    // Root has no current folder aggregate.
+    const root = await api.get('/api/drive');
+    expect(root.body.currentFolder).toBeNull();
+
+    // Parent totals both its own and the nested file (recursive).
+    const inParent = await api.get(`/api/drive?folderId=${parent.id}`);
+    expect(inParent.body.currentFolder).toMatchObject({
+      name: 'Parent',
+      totalBytes: 24,
+      fileCount: 2,
+    });
+
+    // Child totals only its own file.
+    const inChild = await api.get(`/api/drive?folderId=${child.id}`);
+    expect(inChild.body.currentFolder).toMatchObject({ totalBytes: 16, fileCount: 1 });
+  });
+
   it('rejects duplicate names in the same parent', async () => {
     const { api } = await setup();
     await api.post('/api/folders', { name: 'Docs' });

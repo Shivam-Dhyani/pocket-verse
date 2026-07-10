@@ -439,8 +439,10 @@ export function createFakePrisma() {
           (f) => f.ownerId === where.ownerId && (!where.status || f.status === where.status),
         ).length;
       },
-      aggregate: async ({ where }: { where: { ownerId: string } }) => {
-        const rows = [...files.values()].filter((f) => f.ownerId === where.ownerId);
+      aggregate: async ({ where }: { where: { ownerId: string; folderId?: IdFilter } }) => {
+        const rows = [...files.values()].filter(
+          (f) => f.ownerId === where.ownerId && matchesIdFilter(f.folderId, where.folderId),
+        );
         const sum = rows.reduce((total, row) => total + row.size, 0n);
         return { _count: rows.length, _sum: { size: rows.length ? sum : null } };
       },

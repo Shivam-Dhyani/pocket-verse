@@ -6,6 +6,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
+import { useDialogs } from '@/components/dialogs';
 
 /**
  * Account-management control for the linked storage: shows the connected
@@ -16,6 +17,7 @@ import { connectionApi } from '@/lib/connection';
 export function ConnectionManager() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const dialogs = useDialogs();
   const [error, setError] = useState<string | null>(null);
 
   const status = useQuery({
@@ -61,13 +63,19 @@ export function ConnectionManager() {
             type="button"
             disabled={disconnect.isPending}
             onClick={() => {
-              if (
-                window.confirm(
-                  'Disconnect your storage? Pocketverse loses access and the session is signed out on the storage side. Your channel and files stay in your account — they are not deleted.',
-                )
-              ) {
-                disconnect.mutate();
-              }
+              void dialogs
+                .confirm({
+                  title: 'Disconnect storage',
+                  message:
+                    'Pocketverse loses access and the session is signed out on the storage side. Your channel and files stay in your account — they are not deleted.',
+                  confirmLabel: 'Disconnect',
+                  danger: true,
+                })
+                .then((ok) => {
+                  if (ok) {
+                    disconnect.mutate();
+                  }
+                });
             }}
           >
             {disconnect.isPending ? 'Disconnecting…' : 'Disconnect storage'}

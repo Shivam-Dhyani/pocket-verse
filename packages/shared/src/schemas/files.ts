@@ -74,8 +74,20 @@ export const folderDtoSchema = z.object({
 
 export const breadcrumbSchema = z.array(z.object({ id: z.string(), name: z.string() }));
 
+/** Aggregate for the folder currently being viewed (null at the root). */
+export const currentFolderSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    /** Recursive total across this folder and all descendants. */
+    totalBytes: z.number(),
+    fileCount: z.number(),
+  })
+  .nullable();
+
 export const driveListingSchema = z.object({
   breadcrumb: breadcrumbSchema,
+  currentFolder: currentFolderSchema,
   folders: z.array(folderDtoSchema),
   files: z.array(fileDtoSchema),
 });

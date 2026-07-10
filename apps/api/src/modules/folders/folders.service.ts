@@ -155,8 +155,10 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
 
     async listDrive(userId: string, folderId: string | null): Promise<DriveListing> {
       const breadcrumb: { id: string; name: string }[] = [];
+      let currentName = '';
       if (folderId) {
         let current: Folder | null = await requireFolder(userId, folderId);
+        currentName = current.name;
         for (let depth = 0; current && depth < 200; depth += 1) {
           breadcrumb.unshift({ id: current.id, name: current.name });
           current = current.parentId
@@ -165,7 +167,7 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
         }
       }
 
-      const [folders, files] = await Promise.all([
+      const [folders, files, currentFolder] = await Promise.all([
         prisma.folder.findMany({
           where: { ownerId: userId, parentId: folderId },
           orderBy: { name: 'asc' },
@@ -175,15 +177,49 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
           orderBy: { name: 'asc' },
           include: { chunks: { select: { size: true, status: true, progress: true } } },
         }),
+        folderId
+          ? subtreeSize(userId, folderId).then((agg) => ({
+              id: folderId,
+              name: currentName,
+              ...agg,
+            }))
+          : Promise.resolve(null),
       ]);
 
       return {
         breadcrumb,
+        currentFolder,
         folders: folders.map(toFolderDto),
         files: files.map((file) => toFileDto(file, file.chunks)),
       };
     },
   };
+
+  /** Recursive total size + file count for a folder and all its descendants. */
+  async function subtreeSize(
+    userId: string,
+    rootId: string,
+  ): Promise<{ totalBytes: number; fileCount: number }> {
+    const folderIds = [rootId];
+    let frontier = [rootId];
+    while (frontier.length > 0) {
+      const children = await prisma.folder.findMany({
+        where: { ownerId: userId, parentId: { in: frontier } },
+        select: { id: true },
+      });
+      frontier = children.map((child) => child.id);
+      folderIds.push(...frontier);
+    }
+    const aggregate = await prisma.file.aggregate({
+      where: { ownerId: userId, folderId: { in: folderIds } },
+      _count: true,
+      _sum: { size: true },
+    });
+    return {
+      totalBytes: Number(aggregate._sum.size ?? 0n),
+      fileCount: aggregate._count,
+    };
+  }
 }
 
 export type FoldersService = ReturnType<typeof createFoldersService>;

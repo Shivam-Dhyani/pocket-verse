@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -16,6 +16,7 @@ import { SearchBox } from '@/components/search-box';
 import { UploadPanel } from '@/components/upload-panel';
 import { PreviewModal } from '@/components/preview-modal';
 import { MoveDialog } from '@/components/move-dialog';
+import { useDialogs } from '@/components/dialogs';
 import { EmptyState, StatusBadge, formatSize } from '@/components/ui';
 import {
   DownloadIcon,
@@ -33,6 +34,7 @@ import {
 export default function DrivePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const dialogs = useDialogs();
   const [folderId, setFolderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'grid'>('list');
@@ -90,10 +92,14 @@ export default function DrivePage() {
     }
   }, [me.isError, router]);
 
-  const refresh = useCallback(
-    () => queryClient.invalidateQueries({ queryKey: ['drive'] }),
-    [queryClient],
-  );
+  // Refreshing the drive also refreshes the header storage total so the size
+  // chip updates without a page reload.
+  const refresh = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['drive'] }),
+      queryClient.invalidateQueries({ queryKey: ['stats'] }),
+    ]);
+  }, [queryClient]);
   const onError = (err: unknown) =>
     setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
 
@@ -111,12 +117,6 @@ export default function DrivePage() {
     noClick: true,
     noKeyboard: true,
     disabled: !connected,
-  });
-
-  const createFolder = useMutation({
-    mutationFn: (name: string) => driveApi.createFolder({ name, parentId: folderId }),
-    onSuccess: refresh,
-    onError,
   });
 
   async function act(action: () => Promise<unknown>) {
@@ -138,6 +138,65 @@ export default function DrivePage() {
       setPreview(file);
     } else {
       void downloadFile(file);
+    }
+  }
+
+  // All destructive/naming actions use in-app dialogs (no browser alert/prompt).
+  async function newFolder() {
+    const name = await dialogs.prompt({
+      title: 'New folder',
+      label: 'Folder name',
+      placeholder: 'e.g. Photos',
+      confirmLabel: 'Create',
+    });
+    if (name) {
+      await act(() => driveApi.createFolder({ name, parentId: folderId }));
+    }
+  }
+
+  async function renameFile(file: FileDto) {
+    const name = await dialogs.prompt({
+      title: 'Rename file',
+      label: 'New name',
+      initial: file.name,
+    });
+    if (name && name !== file.name) {
+      await act(() => driveApi.updateFile(file.id, { name }));
+    }
+  }
+
+  async function deleteFile(file: FileDto) {
+    const ok = await dialogs.confirm({
+      title: 'Delete file',
+      message: `Delete “${file.name}”? This also deletes it from your connected storage.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (ok) {
+      await act(() => driveApi.deleteFile(file.id));
+    }
+  }
+
+  async function renameFolder(folder: FolderDto) {
+    const name = await dialogs.prompt({
+      title: 'Rename folder',
+      label: 'New name',
+      initial: folder.name,
+    });
+    if (name && name !== folder.name) {
+      await act(() => driveApi.updateFolder(folder.id, { name }));
+    }
+  }
+
+  async function deleteFolder(folder: FolderDto) {
+    const ok = await dialogs.confirm({
+      title: 'Delete folder',
+      message: `Delete “${folder.name}” and everything inside it? Files are also deleted from your connected storage.`,
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (ok) {
+      await act(() => driveApi.deleteFolder(folder.id));
     }
   }
 
@@ -191,12 +250,7 @@ export default function DrivePage() {
             <button
               className="pv-button pv-button--ghost"
               type="button"
-              onClick={() => {
-                const name = window.prompt('Folder name');
-                if (name) {
-                  createFolder.mutate(name);
-                }
-              }}
+              onClick={() => void newFolder()}
             >
               <FolderIcon width={16} height={16} /> New folder
             </button>
@@ -221,6 +275,15 @@ export default function DrivePage() {
               </button>
             </span>
           </div>
+
+          {drive.data?.currentFolder && (
+            <div className="pv-folder-meta">
+              <FolderIcon width={14} height={14} />
+              {drive.data.currentFolder.name} — {formatSize(drive.data.currentFolder.totalBytes)} ·{' '}
+              {drive.data.currentFolder.fileCount}{' '}
+              {drive.data.currentFolder.fileCount === 1 ? 'file' : 'files'}
+            </div>
+          )}
 
           {error && (
             <div className="pv-error" role="alert">
@@ -247,7 +310,10 @@ export default function DrivePage() {
                 onOpenFile: openFile,
                 onPreview: setPreview,
                 onMove: setMoving,
-                act,
+                onRenameFile: renameFile,
+                onDeleteFile: deleteFile,
+                onRenameFolder: renameFolder,
+                onDeleteFolder: deleteFolder,
               };
               return view === 'grid' ? <GridView {...viewProps} /> : <ListView {...viewProps} />;
             })()
@@ -300,7 +366,10 @@ interface ViewProps {
   onOpenFile: (file: FileDto) => void;
   onPreview: (file: FileDto) => void;
   onMove: (file: FileDto) => void;
-  act: (action: () => Promise<unknown>) => Promise<void>;
+  onRenameFile: (file: FileDto) => void;
+  onDeleteFile: (file: FileDto) => void;
+  onRenameFolder: (folder: FolderDto) => void;
+  onDeleteFolder: (folder: FolderDto) => void;
 }
 
 function fileActions(file: FileDto, props: ViewProps) {
@@ -331,12 +400,7 @@ function fileActions(file: FileDto, props: ViewProps) {
         className="pv-iconbtn"
         type="button"
         title="Rename"
-        onClick={() => {
-          const name = window.prompt('New name', file.name);
-          if (name && name !== file.name) {
-            void props.act(() => driveApi.updateFile(file.id, { name }));
-          }
-        }}
+        onClick={() => props.onRenameFile(file)}
       >
         <PencilIcon width={16} height={16} />
       </button>
@@ -347,15 +411,7 @@ function fileActions(file: FileDto, props: ViewProps) {
         className="pv-iconbtn"
         type="button"
         title="Delete"
-        onClick={() => {
-          if (
-            window.confirm(
-              `Delete “${file.name}”? This also deletes it from your connected storage.`,
-            )
-          ) {
-            void props.act(() => driveApi.deleteFile(file.id));
-          }
-        }}
+        onClick={() => props.onDeleteFile(file)}
       >
         <TrashIcon width={16} height={16} />
       </button>
@@ -370,12 +426,7 @@ function folderActions(folder: FolderDto, props: ViewProps) {
         className="pv-iconbtn"
         type="button"
         title="Rename"
-        onClick={() => {
-          const name = window.prompt('New name', folder.name);
-          if (name && name !== folder.name) {
-            void props.act(() => driveApi.updateFolder(folder.id, { name }));
-          }
-        }}
+        onClick={() => props.onRenameFolder(folder)}
       >
         <PencilIcon width={16} height={16} />
       </button>
@@ -383,15 +434,7 @@ function folderActions(folder: FolderDto, props: ViewProps) {
         className="pv-iconbtn"
         type="button"
         title="Delete"
-        onClick={() => {
-          if (
-            window.confirm(
-              `Delete “${folder.name}” and everything inside it? Files are also deleted from your connected storage.`,
-            )
-          ) {
-            void props.act(() => driveApi.deleteFolder(folder.id));
-          }
-        }}
+        onClick={() => props.onDeleteFolder(folder)}
       >
         <TrashIcon width={16} height={16} />
       </button>
