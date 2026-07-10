@@ -29,6 +29,12 @@ function authed(app: Express, token: string) {
     post: (url: string, body?: object) =>
       request(app).post(url).set('Authorization', `Bearer ${token}`).send(body),
     delete: (url: string) => request(app).delete(url).set('Authorization', `Bearer ${token}`),
+    putRaw: (url: string, body: Buffer) =>
+      request(app)
+        .put(url)
+        .set('Authorization', `Bearer ${token}`)
+        .set('Content-Type', 'application/octet-stream')
+        .send(body),
   };
 }
 
@@ -283,6 +289,36 @@ describe('connection flow', () => {
 
     const status = await api.get('/api/connection');
     expect(status.body.connection.status).toBe('none');
+  });
+
+  it('disconnect purges the drive so reconnecting starts clean (no ghost files)', async () => {
+    const { app, prisma } = createTestApp({
+      env: { UPLOAD_PART_SIZE_BYTES: 4, CHUNK_SIZE_BYTES: 8 },
+    });
+    const api = authed(app, await registerUser(app));
+    await api.post('/api/connection/start', { phone: PHONE });
+    await api.post('/api/connection/verify-code', { code: '12345' });
+
+    // Create a folder and a file.
+    const folder = await api.post('/api/folders', { name: 'Docs' });
+    const create = await api.post('/api/files/uploads', {
+      name: 'a.bin',
+      size: 4,
+      folderId: folder.body.folder.id,
+    });
+    await api.putRaw(
+      `/api/files/uploads/${create.body.upload.uploadId}/parts/0`,
+      Buffer.alloc(4, 7),
+    );
+    expect(prisma._state.files.size).toBe(1);
+    expect(prisma._state.folders.size).toBe(1);
+
+    await api.delete('/api/connection');
+
+    // The metadata that pointed at the now-unreachable channel is gone.
+    expect(prisma._state.files.size).toBe(0);
+    expect(prisma._state.folders.size).toBe(0);
+    expect(prisma._state.fileChunks.size).toBe(0);
   });
 
   it('disconnect still deletes locally when remote logout fails', async () => {

@@ -386,6 +386,15 @@ export function createFakePrisma() {
         deleteFolderCascade(where.id);
         return { ...row };
       },
+      deleteMany: async ({ where }: { where: { ownerId: string } }) => {
+        const ids = [...folders.values()]
+          .filter((f) => f.ownerId === where.ownerId)
+          .map((f) => f.id);
+        for (const id of ids) {
+          folders.delete(id);
+        }
+        return { count: ids.length };
+      },
       count: async ({ where }: { where: { ownerId: string } }) => {
         return [...folders.values()].filter((f) => f.ownerId === where.ownerId).length;
       },
@@ -533,6 +542,13 @@ export function createFakePrisma() {
         }
         deleteFileCascade(where.id);
         return { ...row };
+      },
+      deleteMany: async ({ where }: { where: { ownerId: string } }) => {
+        const ids = [...files.values()].filter((f) => f.ownerId === where.ownerId).map((f) => f.id);
+        for (const id of ids) {
+          deleteFileCascade(id);
+        }
+        return { count: ids.length };
       },
     },
     fileChunk: {

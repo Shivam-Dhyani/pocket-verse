@@ -67,7 +67,7 @@ export function ConnectionManager() {
                 .confirm({
                   title: 'Disconnect storage',
                   message:
-                    'Pocketverse loses access and the session is signed out on the storage side. Your channel and files stay in your account — they are not deleted.',
+                    'Pocketverse will sign out of your storage and clear the files it lists here — because it can no longer reach them once disconnected. Your files themselves stay safe in your Telegram “Pocketverse Storage” channel; Pocketverse just stops tracking them. Reconnecting starts with a clean drive.',
                   confirmLabel: 'Disconnect',
                   danger: true,
                 })

@@ -846,6 +846,17 @@ button {
 .pv-upload-item .top .pct {
   color: var(--pv-text-muted);
   font-size: var(--pv-text-xs);
+  white-space: nowrap;
+}
+
+.pv-upload-item .top .pv-row-icon {
+  color: var(--pv-accent);
+  flex-shrink: 0;
+}
+
+.pv-upload-count {
+  color: var(--pv-text-muted);
+  font-size: var(--pv-text-xs);
 }
 
 /* ---------- wizard ---------- */

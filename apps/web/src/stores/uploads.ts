@@ -9,10 +9,21 @@ export interface UploadEntry {
   name: string;
   fraction: number;
   state: UploadState;
+  /** Byte size — lets a folder batch show accurate weighted progress. */
+  size: number;
   /** The server file id, once the upload session exists — lets the drive hide
    *  the file row while it's represented in the upload panel (no double status). */
   fileId?: string;
+  /** When part of a folder upload, all its files share one batch shown as a
+   *  single "folder" item in the panel instead of one row per file. */
+  batchId?: string;
+  batchLabel?: string;
   error?: string;
+}
+
+export interface UploadBatch {
+  id: string;
+  label: string;
 }
 
 interface UploadsStore {
@@ -27,7 +38,15 @@ export const useUploadsStore = create<UploadsStore>((set) => ({
     set((state) => ({
       uploads: {
         ...state.uploads,
-        [id]: { id, name: '', fraction: 0, state: 'uploading', ...state.uploads[id], ...patch },
+        [id]: {
+          id,
+          name: '',
+          fraction: 0,
+          state: 'uploading',
+          size: 0,
+          ...state.uploads[id],
+          ...patch,
+        },
       },
     })),
   remove: (id) =>
@@ -55,10 +74,18 @@ export async function startUpload(
   file: File,
   folderId: string | null,
   onSettled: () => void,
+  batch?: UploadBatch,
 ): Promise<void> {
   const id = `u${++counter}`;
   const store = useUploadsStore.getState();
-  store.set(id, { name: file.name, fraction: 0, state: 'uploading' });
+  store.set(id, {
+    name: file.name,
+    fraction: 0,
+    state: 'uploading',
+    size: file.size,
+    batchId: batch?.id,
+    batchLabel: batch?.label,
+  });
 
   try {
     const { upload } = await request<{ upload: UploadSessionDto }>('/api/files/uploads', {
@@ -180,4 +207,83 @@ export function activeUploadFileIds(uploads: Record<string, UploadEntry>): Set<s
     }
   }
   return ids;
+}
+
+export interface UploadGroup {
+  key: string;
+  kind: 'file' | 'folder';
+  label: string;
+  fraction: number;
+  state: UploadState;
+  totalCount: number;
+  errorCount: number;
+  entryIds: string[];
+}
+
+/**
+ * Collapse raw upload entries into what the panel shows: loose files stay
+ * individual; a folder upload becomes ONE item with weighted (by bytes)
+ * aggregate progress and a combined state.
+ */
+export function toUploadGroups(uploads: Record<string, UploadEntry>): UploadGroup[] {
+  const batches = new Map<string, UploadEntry[]>();
+  const singles: UploadEntry[] = [];
+  for (const entry of Object.values(uploads)) {
+    if (entry.batchId) {
+      const list = batches.get(entry.batchId) ?? [];
+      list.push(entry);
+      batches.set(entry.batchId, list);
+    } else {
+      singles.push(entry);
+    }
+  }
+
+  const groups: UploadGroup[] = [];
+  for (const entry of singles) {
+    groups.push({
+      key: entry.id,
+      kind: 'file',
+      label: entry.name,
+      fraction: entry.fraction,
+      state: entry.state,
+      totalCount: 1,
+      errorCount: entry.state === 'error' ? 1 : 0,
+      entryIds: [entry.id],
+    });
+  }
+  for (const [batchId, entries] of batches) {
+    const totalSize = entries.reduce((sum, e) => sum + Math.max(1, e.size), 0);
+    const sent = entries.reduce((sum, e) => sum + Math.max(1, e.size) * e.fraction, 0);
+    groups.push({
+      key: batchId,
+      kind: 'folder',
+      label: entries[0]?.batchLabel ?? 'Folder',
+      fraction: totalSize ? sent / totalSize : 0,
+      state: combineStates(entries.map((e) => e.state)),
+      totalCount: entries.length,
+      errorCount: entries.filter((e) => e.state === 'error').length,
+      entryIds: entries.map((e) => e.id),
+    });
+  }
+  return groups;
+}
+
+function combineStates(states: UploadState[]): UploadState {
+  if (states.includes('uploading')) return 'uploading';
+  if (states.includes('paused')) return 'paused';
+  if (states.includes('error')) return 'error';
+  if (states.includes('syncing')) return 'syncing';
+  return 'syncing';
+}
+
+export function pauseGroup(entryIds: string[]): void {
+  entryIds.forEach(pauseUpload);
+}
+
+export function resumeGroup(entryIds: string[], onSettled: () => void): void {
+  entryIds.forEach((id) => void resumeUpload(id, onSettled));
+}
+
+export function dismissGroup(entryIds: string[]): void {
+  entryIds.forEach(dismissUpload);
 }

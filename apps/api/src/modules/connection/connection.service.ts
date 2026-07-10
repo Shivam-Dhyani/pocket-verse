@@ -276,6 +276,15 @@ export function createConnectionService({
           }
         }
 
+        // A connection provisions its OWN private channel, and file metadata
+        // points at messages in that channel. Once disconnected we can no
+        // longer reach it, so keeping the metadata would leave "ghost" files
+        // that list but can't open or download. Purge the user's drive so a
+        // reconnect starts clean. (The bytes remain safe in the user's own
+        // channel — we simply stop tracking them.)
+        await prisma.file.deleteMany({ where: { ownerId: userId } });
+        await prisma.folder.deleteMany({ where: { ownerId: userId } });
+
         await prisma.storageConnection.delete({ where: { id: connection.id } });
         await audit.record(userId, AuditEventTypes.CONNECTION_DISCONNECTED, {
           phoneMasked: connection.phoneMasked,

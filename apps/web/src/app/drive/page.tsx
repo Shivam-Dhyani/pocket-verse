@@ -114,6 +114,10 @@ export default function DrivePage() {
       setError(null);
       const dirCache = new Map<string, Promise<string | null>>();
       dirCache.set('', Promise.resolve(folderId));
+      // One batch per top-level folder in this drop, so a whole folder shows as
+      // a single item in the upload panel (not one row per file inside it).
+      const nonce = Date.now().toString(36);
+      const batches = new Map<string, { id: string; label: string }>();
 
       for (const file of files) {
         const { dirs } = relativePathOf(file);
@@ -124,9 +128,18 @@ export default function DrivePage() {
             driveApi.ensureFolderPath(folderId, dirs).then((result) => result.folderId),
           );
         }
+        let batch: { id: string; label: string } | undefined;
+        if (dirs.length > 0) {
+          const top = dirs[0]!;
+          batch = batches.get(top);
+          if (!batch) {
+            batch = { id: `${nonce}:${top}`, label: top };
+            batches.set(top, batch);
+          }
+        }
         try {
           const targetId = await dirCache.get(key)!;
-          void startUpload(file, targetId, refresh);
+          void startUpload(file, targetId, refresh, batch);
         } catch (err) {
           onError(err);
         }

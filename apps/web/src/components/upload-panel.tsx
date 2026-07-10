@@ -1,75 +1,107 @@
 'use client';
 
-import { useUploadsStore, pauseUpload, resumeUpload, dismissUpload } from '@/stores/uploads';
-import { PauseIcon, PlayIcon, XIcon } from '@/components/icons';
+import {
+  dismissGroup,
+  pauseGroup,
+  resumeGroup,
+  toUploadGroups,
+  useUploadsStore,
+  type UploadGroup,
+} from '@/stores/uploads';
+import { FolderIcon, PauseIcon, PlayIcon, UploadPortal, XIcon } from '@/components/icons';
 
 export function UploadPanel({ onSettled }: { onSettled: () => void }) {
   const uploads = useUploadsStore((state) => state.uploads);
-  const entries = Object.values(uploads);
-  if (entries.length === 0) {
+  const groups = toUploadGroups(uploads);
+  if (groups.length === 0) {
     return null;
   }
 
   return (
     <div className="pv-uploads">
-      {entries.map((item) => (
-        <div className="pv-upload-item" key={item.id}>
-          <div className="top">
-            <span className="name">
-              {item.state === 'syncing' ? 'Uploaded ' : 'Uploading '}
-              {item.name}
-            </span>
-            <span className="pct">
-              {item.state === 'error'
-                ? (item.error ?? 'Failed')
-                : item.state === 'paused'
-                  ? 'Paused'
-                  : item.state === 'syncing'
-                    ? 'Syncing to storage…'
-                    : `${Math.round(item.fraction * 100)}%`}
-            </span>
-            {item.state === 'uploading' && (
-              <button
-                className="pv-iconbtn"
-                type="button"
-                title="Pause"
-                onClick={() => pauseUpload(item.id)}
-              >
-                <PauseIcon width={15} height={15} />
-              </button>
-            )}
-            {(item.state === 'paused' || item.state === 'error') && (
-              <button
-                className="pv-iconbtn"
-                type="button"
-                title="Resume"
-                onClick={() => void resumeUpload(item.id, onSettled)}
-              >
-                <PlayIcon width={15} height={15} />
-              </button>
-            )}
-            {item.state !== 'uploading' && (
-              <button
-                className="pv-iconbtn"
-                type="button"
-                title="Dismiss"
-                onClick={() => dismissUpload(item.id)}
-              >
-                <XIcon width={15} height={15} />
-              </button>
-            )}
-          </div>
-          <span className="pv-progress-track">
-            <span
-              className="pv-progress-bar"
-              style={{
-                width: `${item.fraction * 100}%`,
-                opacity: item.state === 'error' ? 0.4 : 1,
-              }}
-            />
-          </span>
-        </div>
+      {groups.map((group) => (
+        <UploadRow key={group.key} group={group} onSettled={onSettled} />
       ))}
+    </div>
+  );
+}
+
+function statusText(group: UploadGroup): string {
+  switch (group.state) {
+    case 'error':
+      return group.errorCount > 1 ? `${group.errorCount} failed` : 'Failed';
+    case 'paused':
+      return 'Paused';
+    case 'syncing':
+      return 'Syncing to storage…';
+    default:
+      return `${Math.round(group.fraction * 100)}%`;
+  }
+}
+
+function UploadRow({ group, onSettled }: { group: UploadGroup; onSettled: () => void }) {
+  const isFolder = group.kind === 'folder';
+  return (
+    <div className="pv-upload-item">
+      <div className="top">
+        <span className="pv-row-icon">
+          {isFolder ? (
+            <FolderIcon width={16} height={16} />
+          ) : (
+            <UploadPortal width={16} height={16} />
+          )}
+        </span>
+        <span className="name">
+          {group.state === 'syncing' ? 'Uploaded ' : 'Uploading '}
+          {group.label}
+          {isFolder && (
+            <span className="pv-upload-count">
+              {' '}
+              · {group.totalCount} {group.totalCount === 1 ? 'file' : 'files'}
+            </span>
+          )}
+        </span>
+        <span className="pct">{statusText(group)}</span>
+        {group.state === 'uploading' && (
+          <button
+            className="pv-iconbtn"
+            type="button"
+            title="Pause"
+            onClick={() => pauseGroup(group.entryIds)}
+          >
+            <PauseIcon width={15} height={15} />
+          </button>
+        )}
+        {(group.state === 'paused' || group.state === 'error') && (
+          <button
+            className="pv-iconbtn"
+            type="button"
+            title="Resume"
+            onClick={() => resumeGroup(group.entryIds, onSettled)}
+          >
+            <PlayIcon width={15} height={15} />
+          </button>
+        )}
+        {group.state !== 'uploading' && (
+          <button
+            className="pv-iconbtn"
+            type="button"
+            title="Dismiss"
+            onClick={() => dismissGroup(group.entryIds)}
+          >
+            <XIcon width={15} height={15} />
+          </button>
+        )}
+      </div>
+      <span className="pv-progress-track">
+        <span
+          className="pv-progress-bar"
+          style={{
+            width: `${group.fraction * 100}%`,
+            opacity: group.state === 'error' ? 0.4 : 1,
+          }}
+        />
+      </span>
     </div>
   );
 }
