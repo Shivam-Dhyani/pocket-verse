@@ -9,7 +9,7 @@ import type { FileDto, FolderDto } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
 import { downloadFile, driveApi, relativePathOf } from '@/lib/files';
-import { activeUploadFileIds, startUpload, useUploadsStore } from '@/stores/uploads';
+import { activeUploadFileIds, registerUpload, runUploads, useUploadsStore } from '@/stores/uploads';
 import { useAuthStore } from '@/stores/auth';
 import { AppHeader } from '@/components/app-header';
 import { SearchBox } from '@/components/search-box';
@@ -112,22 +112,17 @@ export default function DrivePage() {
         return;
       }
       setError(null);
-      const dirCache = new Map<string, Promise<string | null>>();
-      dirCache.set('', Promise.resolve(folderId));
       // One batch per top-level folder in this drop, so a whole folder shows as
       // a single item in the upload panel (not one row per file inside it).
       const nonce = Date.now().toString(36);
       const batches = new Map<string, { id: string; label: string }>();
 
-      for (const file of files) {
+      // Register every entry up-front. This makes the folder appear immediately
+      // and — crucially — fixes the batch progress denominator: all file sizes
+      // are known before the first byte is sent, so the percentage only ever
+      // climbs instead of jumping as files trickle in and out of the store.
+      const items = files.map((file) => {
         const { dirs } = relativePathOf(file);
-        const key = dirs.join('/');
-        if (!dirCache.has(key)) {
-          dirCache.set(
-            key,
-            driveApi.ensureFolderPath(folderId, dirs).then((result) => result.folderId),
-          );
-        }
         let batch: { id: string; label: string } | undefined;
         if (dirs.length > 0) {
           const top = dirs[0]!;
@@ -137,13 +132,43 @@ export default function DrivePage() {
             batches.set(top, batch);
           }
         }
+        return { id: registerUpload(file, batch), file, dirs };
+      });
+
+      // Resolve each unique directory to a real folder id — sequentially, so we
+      // never race two siblings into duplicate folders (ensure-path is
+      // find-then-create, not atomic) and never burst the API with hundreds of
+      // simultaneous calls.
+      const dirCache = new Map<string, string | null>();
+      dirCache.set('', folderId);
+      const store = useUploadsStore.getState();
+      for (const key of new Set(items.map((item) => item.dirs.join('/')))) {
+        if (dirCache.has(key)) {
+          continue;
+        }
         try {
-          const targetId = await dirCache.get(key)!;
-          void startUpload(file, targetId, refresh, batch);
+          const { folderId: resolved } = await driveApi.ensureFolderPath(folderId, key.split('/'));
+          dirCache.set(key, resolved);
         } catch (err) {
           onError(err);
+          // Fail just the files bound to this directory; the rest still upload.
+          for (const item of items) {
+            if (item.dirs.join('/') === key) {
+              store.set(item.id, { state: 'error', error: 'Could not create this folder.' });
+            }
+          }
         }
       }
+
+      // Upload through a bounded pool so we stay well under rate/flood limits.
+      const jobs = items
+        .filter((item) => dirCache.has(item.dirs.join('/')))
+        .map((item) => ({
+          id: item.id,
+          file: item.file,
+          folderId: dirCache.get(item.dirs.join('/')) ?? folderId,
+        }));
+      runUploads(jobs, refresh);
     },
     [folderId, refresh],
   );

@@ -61,11 +61,14 @@ export function createApp({ env, prisma, logger, gateway, queue }: AppDeps): exp
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
-  // Part uploads are exempt from the general budget — a large file is many
-  // requests by design; they get their own generous limiter below.
+  // The whole authenticated storage surface is exempt from the general budget:
+  // a single folder upload is legitimately hundreds of requests (one session
+  // per file, one ensure-path per directory, plus drive re-polls). Those routes
+  // are JWT-gated and carry their own generous limiter below. The general
+  // budget stays tight to guard unauthenticated/abuse traffic.
   app.use(
     limiters.general({
-      skip: (req) => req.method === 'PUT' && /^\/api\/files\/uploads\//.test(req.path),
+      skip: (req) => /^\/api\/(files|folders|drive|activity|stats)(\/|$)/.test(req.path),
     }),
   );
 
@@ -111,11 +114,13 @@ export function createApp({ env, prisma, logger, gateway, queue }: AppDeps): exp
     audit,
     stagingDir: env.STAGING_DIR,
   });
+  // Folder uploads fan out to these routes as heavily as file parts do, so they
+  // share the same generous storage budget rather than the tight general one.
   app.use('/api/files', limiters.uploads, createFilesRouter(filesService, jwt, env.CORS_ORIGIN));
-  app.use('/api/folders', createFoldersRouter(foldersService, jwt));
-  app.use('/api/drive', createDriveRouter(foldersService, jwt));
-  app.use('/api/activity', createActivityRouter(prisma, jwt));
-  app.use('/api/stats', createStatsRouter(prisma, jwt));
+  app.use('/api/folders', limiters.uploads, createFoldersRouter(foldersService, jwt));
+  app.use('/api/drive', limiters.uploads, createDriveRouter(foldersService, jwt));
+  app.use('/api/activity', limiters.uploads, createActivityRouter(prisma, jwt));
+  app.use('/api/stats', limiters.uploads, createStatsRouter(prisma, jwt));
 
   app.use(notFoundHandler);
   app.use(createErrorHandler(logger, { includeHints: env.NODE_ENV !== 'production' }));

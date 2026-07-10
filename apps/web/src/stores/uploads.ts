@@ -70,15 +70,15 @@ interface Controller {
 const controllers = new Map<string, Controller>();
 let counter = 0;
 
-export async function startUpload(
-  file: File,
-  folderId: string | null,
-  onSettled: () => void,
-  batch?: UploadBatch,
-): Promise<void> {
+/**
+ * Create the upload entry in the store without starting any network work. Used
+ * to register a whole folder batch up-front so its aggregate progress has a
+ * stable denominator (all sizes known before the first byte is sent), and the
+ * folder appears in the panel immediately.
+ */
+export function registerUpload(file: File, batch?: UploadBatch): string {
   const id = `u${++counter}`;
-  const store = useUploadsStore.getState();
-  store.set(id, {
+  useUploadsStore.getState().set(id, {
     name: file.name,
     fraction: 0,
     state: 'uploading',
@@ -86,7 +86,16 @@ export async function startUpload(
     batchId: batch?.id,
     batchLabel: batch?.label,
   });
+  return id;
+}
 
+/** Open the upload session and drive the part loop for an already-registered entry. */
+async function beginUpload(
+  id: string,
+  file: File,
+  folderId: string | null,
+  onSettled: () => void,
+): Promise<void> {
   try {
     const { upload } = await request<{ upload: UploadSessionDto }>('/api/files/uploads', {
       method: 'POST',
@@ -107,6 +116,38 @@ export async function startUpload(
       error: error instanceof ApiError ? error.message : 'Upload failed',
     });
     onSettled();
+  }
+}
+
+export async function startUpload(
+  file: File,
+  folderId: string | null,
+  onSettled: () => void,
+  batch?: UploadBatch,
+): Promise<void> {
+  await beginUpload(registerUpload(file, batch), file, folderId, onSettled);
+}
+
+/**
+ * Upload a set of already-registered files through a bounded worker pool.
+ * Concurrency is capped so a big folder never floods the API (or trips the
+ * storage account's flood limits, since uploads serialize per-user upstream
+ * anyway) — extra files simply wait their turn.
+ */
+export function runUploads(
+  jobs: { id: string; file: File; folderId: string | null }[],
+  onSettled: () => void,
+  concurrency = 3,
+): void {
+  let cursor = 0;
+  async function worker(): Promise<void> {
+    while (cursor < jobs.length) {
+      const job = jobs[cursor++]!;
+      await beginUpload(job.id, job.file, job.folderId, onSettled);
+    }
+  }
+  for (let i = 0; i < Math.min(concurrency, jobs.length); i += 1) {
+    void worker();
   }
 }
 
@@ -195,7 +236,32 @@ async function runLoop(id: string, onSettled: () => void): Promise<void> {
   store.set(id, { state: 'syncing', fraction: 1 });
   controllers.delete(id);
   onSettled();
-  setTimeout(() => dismissUpload(id), 1200);
+  scheduleDismiss(id);
+}
+
+/**
+ * A loose file dismisses itself once uploaded. A folder-batch member must stay
+ * until every sibling is done — dismissing them one-by-one would shrink the
+ * batch's progress denominator and make the percentage jump around. So we only
+ * dismiss the whole batch together, once all of its files have finished.
+ */
+function scheduleDismiss(id: string): void {
+  const entry = useUploadsStore.getState().uploads[id];
+  if (!entry?.batchId) {
+    setTimeout(() => dismissUpload(id), 1200);
+    return;
+  }
+  const batchId = entry.batchId;
+  setTimeout(() => {
+    const members = Object.values(useUploadsStore.getState().uploads).filter(
+      (e) => e.batchId === batchId,
+    );
+    // Only clear the batch when nothing is still uploading, paused, or errored
+    // (errors stay visible so the user can retry them).
+    if (members.length > 0 && members.every((e) => e.state === 'syncing')) {
+      members.forEach((e) => dismissUpload(e.id));
+    }
+  }, 1200);
 }
 
 /** File ids currently represented in the upload panel — hidden from the grid. */
