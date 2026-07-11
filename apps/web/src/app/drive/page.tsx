@@ -9,7 +9,12 @@ import type { FileDto, FolderDto } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
 import { downloadFile, driveApi, relativePathOf } from '@/lib/files';
-import { activeUploadFileIds, registerUpload, runUploads, useUploadsStore } from '@/stores/uploads';
+import {
+  activeUploadFileIds,
+  registerUploads,
+  runUploads,
+  useUploadsStore,
+} from '@/stores/uploads';
 import { useAuthStore } from '@/stores/auth';
 import { AppHeader } from '@/components/app-header';
 import { SearchBox } from '@/components/search-box';
@@ -117,11 +122,7 @@ export default function DrivePage() {
       const nonce = Date.now().toString(36);
       const batches = new Map<string, { id: string; label: string }>();
 
-      // Register every entry up-front. This makes the folder appear immediately
-      // and — crucially — fixes the batch progress denominator: all file sizes
-      // are known before the first byte is sent, so the percentage only ever
-      // climbs instead of jumping as files trickle in and out of the store.
-      const items = files.map((file) => {
+      const prepared = files.map((file) => {
         const { dirs } = relativePathOf(file);
         let batch: { id: string; label: string } | undefined;
         if (dirs.length > 0) {
@@ -132,43 +133,47 @@ export default function DrivePage() {
             batches.set(top, batch);
           }
         }
-        return { id: registerUpload(file, batch), file, dirs };
+        return { file, dirs, batch };
       });
 
-      // Resolve each unique directory to a real folder id — sequentially, so we
-      // never race two siblings into duplicate folders (ensure-path is
-      // find-then-create, not atomic) and never burst the API with hundreds of
-      // simultaneous calls.
-      const dirCache = new Map<string, string | null>();
-      dirCache.set('', folderId);
-      const store = useUploadsStore.getState();
-      for (const key of new Set(items.map((item) => item.dirs.join('/')))) {
-        if (dirCache.has(key)) {
-          continue;
-        }
-        try {
-          const { folderId: resolved } = await driveApi.ensureFolderPath(folderId, key.split('/'));
-          dirCache.set(key, resolved);
-        } catch (err) {
-          onError(err);
-          // Fail just the files bound to this directory; the rest still upload.
-          for (const item of items) {
-            if (item.dirs.join('/') === key) {
-              store.set(item.id, { state: 'error', error: 'Could not create this folder.' });
-            }
-          }
-        }
-      }
+      // Register every entry in ONE store update. This makes the folder appear
+      // immediately, gives the batch a stable progress denominator (all sizes
+      // known up-front, so the percentage only climbs), and — critically —
+      // avoids copying the whole uploads map once per file, which froze the tab
+      // on a large tree like a React project's node_modules.
+      const ids = registerUploads(prepared.map(({ file, batch }) => ({ file, batch })));
 
-      // Upload through a bounded pool so we stay well under rate/flood limits.
-      const jobs = items
-        .filter((item) => dirCache.has(item.dirs.join('/')))
-        .map((item) => ({
-          id: item.id,
-          file: item.file,
-          folderId: dirCache.get(item.dirs.join('/')) ?? folderId,
-        }));
-      runUploads(jobs, refresh);
+      // Resolve a directory to a real folder id, creating one segment at a time
+      // and caching each path prefix as a promise. Concurrent siblings share the
+      // parent's promise, so shared ancestors are never created twice — the
+      // ensure-path call is find-then-create (not atomic), so this is what keeps
+      // it race-free even though uploads run concurrently.
+      const dirCache = new Map<string, Promise<string | null>>();
+      dirCache.set('', Promise.resolve(folderId));
+      const ensureDir = (dirs: string[]): Promise<string | null> => {
+        const key = dirs.join('/');
+        let promise = dirCache.get(key);
+        if (!promise) {
+          const segment = dirs[dirs.length - 1]!;
+          promise = ensureDir(dirs.slice(0, -1)).then((parentId) =>
+            driveApi.ensureFolderPath(parentId, [segment]).then((result) => result.folderId),
+          );
+          dirCache.set(key, promise);
+        }
+        return promise;
+      };
+
+      // Upload through a bounded pool: directory creation is resolved lazily
+      // inside it, so we stay well under rate/flood limits and never block every
+      // upload behind a long serial folder-creation pass.
+      runUploads(
+        prepared.map(({ file, dirs }, index) => ({
+          id: ids[index]!,
+          file,
+          resolveFolderId: () => ensureDir(dirs),
+        })),
+        refresh,
+      );
     },
     [folderId, refresh],
   );

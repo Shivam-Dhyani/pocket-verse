@@ -29,7 +29,11 @@ export interface UploadBatch {
 interface UploadsStore {
   uploads: Record<string, UploadEntry>;
   set: (id: string, patch: Partial<UploadEntry>) => void;
+  /** Insert many entries in a single update — registering a folder one-by-one
+   *  would copy the whole map per file (O(n²)) and freeze on large trees. */
+  addMany: (entries: UploadEntry[]) => void;
   remove: (id: string) => void;
+  removeMany: (ids: string[]) => void;
 }
 
 export const useUploadsStore = create<UploadsStore>((set) => ({
@@ -49,10 +53,26 @@ export const useUploadsStore = create<UploadsStore>((set) => ({
         },
       },
     })),
+  addMany: (entries) =>
+    set((state) => {
+      const uploads = { ...state.uploads };
+      for (const entry of entries) {
+        uploads[entry.id] = entry;
+      }
+      return { uploads };
+    }),
   remove: (id) =>
     set((state) => {
       const { [id]: _gone, ...rest } = state.uploads;
       return { uploads: rest };
+    }),
+  removeMany: (ids) =>
+    set((state) => {
+      const uploads = { ...state.uploads };
+      for (const id of ids) {
+        delete uploads[id];
+      }
+      return { uploads };
     }),
 }));
 
@@ -71,22 +91,30 @@ const controllers = new Map<string, Controller>();
 let counter = 0;
 
 /**
- * Create the upload entry in the store without starting any network work. Used
- * to register a whole folder batch up-front so its aggregate progress has a
- * stable denominator (all sizes known before the first byte is sent), and the
- * folder appears in the panel immediately.
+ * Register many uploads in a single store update, returning one id per input
+ * (order preserved). Registering up-front gives a folder batch a stable
+ * progress denominator — all sizes are known before the first byte is sent —
+ * and the folder appears in the panel immediately. Doing it in one update is
+ * essential: a React project can be tens of thousands of files, and inserting
+ * them one at a time would copy the whole map per file and freeze the tab.
  */
-export function registerUpload(file: File, batch?: UploadBatch): string {
-  const id = `u${++counter}`;
-  useUploadsStore.getState().set(id, {
-    name: file.name,
-    fraction: 0,
-    state: 'uploading',
-    size: file.size,
-    batchId: batch?.id,
-    batchLabel: batch?.label,
+export function registerUploads(items: { file: File; batch?: UploadBatch }[]): string[] {
+  const ids: string[] = [];
+  const entries: UploadEntry[] = items.map(({ file, batch }) => {
+    const id = `u${++counter}`;
+    ids.push(id);
+    return {
+      id,
+      name: file.name,
+      fraction: 0,
+      state: 'uploading' as const,
+      size: file.size,
+      batchId: batch?.id,
+      batchLabel: batch?.label,
+    };
   });
-  return id;
+  useUploadsStore.getState().addMany(entries);
+  return ids;
 }
 
 /** Open the upload session and drive the part loop for an already-registered entry. */
@@ -125,7 +153,17 @@ export async function startUpload(
   onSettled: () => void,
   batch?: UploadBatch,
 ): Promise<void> {
-  await beginUpload(registerUpload(file, batch), file, folderId, onSettled);
+  const [id] = registerUploads([{ file, batch }]);
+  await beginUpload(id!, file, folderId, onSettled);
+}
+
+export interface UploadJob {
+  id: string;
+  file: File;
+  /** Resolves this file's destination folder id — created lazily inside the
+   *  pool so directory creation is throttled and interleaved with uploads
+   *  rather than blocking every upload behind a long serial pre-pass. */
+  resolveFolderId: () => Promise<string | null>;
 }
 
 /**
@@ -134,16 +172,23 @@ export async function startUpload(
  * storage account's flood limits, since uploads serialize per-user upstream
  * anyway) — extra files simply wait their turn.
  */
-export function runUploads(
-  jobs: { id: string; file: File; folderId: string | null }[],
-  onSettled: () => void,
-  concurrency = 3,
-): void {
+export function runUploads(jobs: UploadJob[], onSettled: () => void, concurrency = 3): void {
   let cursor = 0;
   async function worker(): Promise<void> {
     while (cursor < jobs.length) {
       const job = jobs[cursor++]!;
-      await beginUpload(job.id, job.file, job.folderId, onSettled);
+      let folderId: string | null;
+      try {
+        folderId = await job.resolveFolderId();
+      } catch (error) {
+        useUploadsStore.getState().set(job.id, {
+          state: 'error',
+          error: error instanceof ApiError ? error.message : 'Could not create this folder.',
+        });
+        onSettled();
+        continue;
+      }
+      await beginUpload(job.id, job.file, folderId, onSettled);
     }
   }
   for (let i = 0; i < Math.min(concurrency, jobs.length); i += 1) {
@@ -257,9 +302,11 @@ function scheduleDismiss(id: string): void {
       (e) => e.batchId === batchId,
     );
     // Only clear the batch when nothing is still uploading, paused, or errored
-    // (errors stay visible so the user can retry them).
+    // (errors stay visible so the user can retry them). Remove them in one
+    // update so a huge folder doesn't stutter the tab on completion.
     if (members.length > 0 && members.every((e) => e.state === 'syncing')) {
-      members.forEach((e) => dismissUpload(e.id));
+      members.forEach((e) => controllers.delete(e.id));
+      useUploadsStore.getState().removeMany(members.map((e) => e.id));
     }
   }, 1200);
 }
@@ -351,5 +398,6 @@ export function resumeGroup(entryIds: string[], onSettled: () => void): void {
 }
 
 export function dismissGroup(entryIds: string[]): void {
-  entryIds.forEach(dismissUpload);
+  entryIds.forEach((id) => controllers.delete(id));
+  useUploadsStore.getState().removeMany(entryIds);
 }

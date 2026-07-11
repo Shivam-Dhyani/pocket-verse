@@ -3,7 +3,7 @@
 import { useMutation } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { loginSchema } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth';
@@ -13,11 +13,20 @@ export default function LoginPage() {
   const setSession = useAuthStore((state) => state.setSession);
   const [error, setError] = useState<string | null>(null);
 
+  // Already signed in (e.g. pressed Back onto this page)? Go straight to the
+  // drive instead of showing the sign-in form again.
+  useEffect(() => {
+    if (useAuthStore.getState().accessToken) {
+      router.replace('/drive');
+    }
+  }, [router]);
+
   const mutation = useMutation({
     mutationFn: api.login,
     onSuccess: (result) => {
       setSession(result);
-      router.push('/drive');
+      // replace, not push: keep /login out of history so Back doesn't land here.
+      router.replace('/drive');
     },
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
