@@ -28,9 +28,17 @@ interface PromptOptions {
   confirmLabel?: string;
 }
 
+interface NoticeOptions {
+  title: string;
+  message?: ReactNode;
+  confirmLabel?: string;
+}
+
 interface DialogsApi {
   confirm: (options: ConfirmOptions) => Promise<boolean>;
   prompt: (options: PromptOptions) => Promise<string | null>;
+  /** A single-button informational dialog (no destructive choice to make). */
+  notice: (options: NoticeOptions) => Promise<void>;
 }
 
 const DialogsContext = createContext<DialogsApi | null>(null);
@@ -46,6 +54,7 @@ export function useDialogs(): DialogsApi {
 type State =
   | { kind: 'confirm'; options: ConfirmOptions }
   | { kind: 'prompt'; options: PromptOptions; value: string }
+  | { kind: 'notice'; options: NoticeOptions }
   | null;
 
 export function DialogsProvider({ children }: { children: ReactNode }) {
@@ -70,6 +79,11 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
         new Promise<string | null>((resolve) => {
           resolver.current = resolve as (value: unknown) => void;
           setState({ kind: 'prompt', options, value: options.initial ?? '' });
+        }),
+      notice: (options) =>
+        new Promise<void>((resolve) => {
+          resolver.current = resolve as (value: unknown) => void;
+          setState({ kind: 'notice', options });
         }),
     }),
     [],
@@ -100,6 +114,26 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
               onClick={() => settle(true)}
             >
               {state.options.confirmLabel ?? 'Confirm'}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {state?.kind === 'notice' && (
+        <Modal title={state.options.title} onClose={() => settle(undefined)}>
+          {state.options.message && (
+            <div
+              style={{
+                margin: '0 0 var(--pv-s5)',
+                color: 'var(--pv-text-muted)',
+                lineHeight: 1.55,
+              }}
+            >
+              {state.options.message}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="pv-button" type="button" autoFocus onClick={() => settle(undefined)}>
+              {state.options.confirmLabel ?? 'Got it'}
             </button>
           </div>
         </Modal>

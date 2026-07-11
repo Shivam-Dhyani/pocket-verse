@@ -10,6 +10,11 @@ import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
 import { downloadFile, driveApi, relativePathOf } from '@/lib/files';
 import {
+  UPLOAD_MAX_FILE_COUNT,
+  UPLOAD_SUGGESTED_BATCH,
+  UPLOAD_WARN_FILE_COUNT,
+} from '@/lib/limits';
+import {
   activeUploadFileIds,
   registerUploads,
   runUploads,
@@ -116,6 +121,51 @@ export default function DrivePage() {
       if (files.length === 0) {
         return;
       }
+
+      // Too many files to land reliably in one go — guide the user to smaller
+      // batches instead of dead-ending them or letting a doomed upload stall.
+      if (files.length > UPLOAD_MAX_FILE_COUNT) {
+        await dialogs.notice({
+          title: "Let's add this one in smaller batches",
+          message: (
+            <>
+              <p style={{ margin: '0 0 var(--pv-s3)' }}>
+                This folder has {files.length.toLocaleString()} files — that's more than we can add
+                reliably all at once, and trying could make it stall partway through.
+              </p>
+              <p style={{ margin: '0 0 var(--pv-s3)' }}>
+                Here's the easy way to get everything in safely: add it a little at a time. Open the
+                folder and drag in a portion — say, a few sub-folders or around{' '}
+                {UPLOAD_SUGGESTED_BATCH.toLocaleString()} files — then come back for the rest.
+                Everything lands in the same place, organised just the way it is now.
+              </p>
+              <p style={{ margin: 0 }}>
+                We're making big uploads smoother in a future update. For now, a few smaller batches
+                are the reliable way in.
+              </p>
+            </>
+          ),
+          confirmLabel: 'Got it',
+        });
+        return;
+      }
+
+      // Large but doable — set expectations, then let them proceed.
+      if (files.length > UPLOAD_WARN_FILE_COUNT) {
+        const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+        const ok = await dialogs.confirm({
+          title: 'This is a big upload',
+          message: `This folder has ${files.length.toLocaleString()} files (${formatSize(
+            totalBytes,
+          )}). It'll upload in the background and may take a while — you can keep using Pocketverse while it works. Ready to go?`,
+          confirmLabel: 'Start upload',
+          cancelLabel: 'Not now',
+        });
+        if (!ok) {
+          return;
+        }
+      }
+
       setError(null);
       // One batch per top-level folder in this drop, so a whole folder shows as
       // a single item in the upload panel (not one row per file inside it).
@@ -175,7 +225,7 @@ export default function DrivePage() {
         refresh,
       );
     },
-    [folderId, refresh],
+    [folderId, refresh, dialogs],
   );
 
   const onDrop = useCallback((accepted: File[]) => void ingest(accepted), [ingest]);
