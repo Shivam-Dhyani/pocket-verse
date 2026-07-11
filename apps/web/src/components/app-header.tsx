@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { StatsDto } from '@pocketverse/shared';
 import { api, request } from '@/lib/api';
@@ -16,6 +17,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
   const dialogs = useDialogs();
   const clearSession = useAuthStore((state) => state.clearSession);
   const accessToken = useAuthStore((state) => state.accessToken);
+  const [signingOut, setSigningOut] = useState(false);
 
   const stats = useQuery({
     queryKey: ['stats'],
@@ -50,6 +52,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           type="button"
           title="Sign out"
           aria-label="Sign out"
+          disabled={signingOut}
           style={{ width: 'auto', paddingInline: 10, fontSize: 'var(--pv-text-xs)' }}
           onClick={() => {
             void dialogs
@@ -62,6 +65,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
                 if (!ok) {
                   return;
                 }
+                setSigningOut(true);
                 return api
                   .logout()
                   .catch(() => undefined)
@@ -72,7 +76,7 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
               });
           }}
         >
-          Sign out
+          {signingOut ? 'Signing out…' : 'Sign out'}
         </button>
       </nav>
     </header>

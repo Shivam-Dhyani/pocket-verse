@@ -1032,3 +1032,28 @@ button {
   margin: 0 auto;
   border-radius: var(--pv-radius-sm);
 }
+
+/* Floating "working…" pill shown while a user action (delete, rename, move…)
+   is in flight, so nothing ever feels like it silently hung. */
+.pv-busy-pill {
+  position: fixed;
+  bottom: var(--pv-s6);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pv-s2);
+  padding: var(--pv-s2) var(--pv-s4);
+  border: 1px solid var(--pv-border-strong);
+  border-radius: 999px;
+  background: var(--pv-surface-raised);
+  color: var(--pv-text);
+  font-size: var(--pv-text-sm);
+  box-shadow: var(--pv-shadow-lg, 0 8px 28px rgb(0 0 0 / 0.35));
+}
+
+.pv-busy-pill .pv-spinner {
+  width: 14px;
+  height: 14px;
+}

@@ -46,6 +46,9 @@ export default function DrivePage() {
   const dialogs = useDialogs();
   const [folderId, setFolderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Label of the user action currently in flight ("Deleting…") — drives the
+  // floating busy pill so no action ever runs without visible feedback.
+  const [busy, setBusy] = useState<string | null>(null);
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [preview, setPreview] = useState<FileDto | null>(null);
   const [moving, setMoving] = useState<FileDto | null>(null);
@@ -238,13 +241,16 @@ export default function DrivePage() {
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadMenu, setUploadMenu] = useState(false);
 
-  async function act(action: () => Promise<unknown>) {
+  async function act(label: string, action: () => Promise<unknown>) {
     setError(null);
+    setBusy(label);
     try {
       await action();
       await refresh();
     } catch (err) {
       onError(err);
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -265,7 +271,7 @@ export default function DrivePage() {
       confirmLabel: 'Create',
     });
     if (name) {
-      await act(() => driveApi.createFolder({ name, parentId: folderId }));
+      await act('Creating folder…', () => driveApi.createFolder({ name, parentId: folderId }));
     }
   }
 
@@ -276,7 +282,7 @@ export default function DrivePage() {
       initial: file.name,
     });
     if (name && name !== file.name) {
-      await act(() => driveApi.updateFile(file.id, { name }));
+      await act('Renaming…', () => driveApi.updateFile(file.id, { name }));
     }
   }
 
@@ -288,7 +294,7 @@ export default function DrivePage() {
       danger: true,
     });
     if (ok) {
-      await act(() => driveApi.deleteFile(file.id));
+      await act(`Deleting “${file.name}”…`, () => driveApi.deleteFile(file.id));
     }
   }
 
@@ -299,7 +305,7 @@ export default function DrivePage() {
       initial: folder.name,
     });
     if (name && name !== folder.name) {
-      await act(() => driveApi.updateFolder(folder.id, { name }));
+      await act('Renaming…', () => driveApi.updateFolder(folder.id, { name }));
     }
   }
 
@@ -311,7 +317,7 @@ export default function DrivePage() {
       danger: true,
     });
     if (ok) {
-      await act(() => driveApi.deleteFolder(folder.id));
+      await act(`Deleting “${folder.name}”…`, () => driveApi.deleteFolder(folder.id));
     }
   }
 
@@ -487,6 +493,11 @@ export default function DrivePage() {
 
       {preview && <PreviewModal file={preview} onClose={() => setPreview(null)} />}
       {moving && <MoveDialog file={moving} onClose={() => setMoving(null)} onMoved={refresh} />}
+      {busy && (
+        <div className="pv-busy-pill" role="status" aria-live="polite">
+          <span className="pv-spinner" /> {busy}
+        </div>
+      )}
     </div>
   );
 }
