@@ -111,6 +111,11 @@ export default function AboutPage() {
             genuinely better.
           </p>
           <div className="pv-compare">
+            <div className="pv-compare-head" aria-hidden="true">
+              <span />
+              <span className="us">Pocketverse</span>
+              <span className="them">Google Drive / iCloud</span>
+            </div>
             {COMPARISON.map((row) => (
               <div className="pv-compare-row" key={row.point}>
                 <span className="pv-compare-point">{row.point}</span>
