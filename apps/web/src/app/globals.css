@@ -1091,3 +1091,138 @@ button {
 .pv-password-toggle:hover {
   color: var(--pv-text);
 }
+
+/* Expandable topic list (Security page) — native details/summary. */
+.pv-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pv-s3);
+  margin-top: var(--pv-s5);
+}
+
+.pv-accordion details {
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-md);
+  background: var(--pv-surface);
+  overflow: hidden;
+}
+
+.pv-accordion summary {
+  display: flex;
+  align-items: center;
+  gap: var(--pv-s2);
+  padding: var(--pv-s4);
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+  transition: background var(--pv-fast);
+}
+
+.pv-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.pv-accordion summary::after {
+  content: '';
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--pv-text-muted);
+  border-bottom: 2px solid var(--pv-text-muted);
+  transform: rotate(45deg);
+  transition: transform var(--pv-fast);
+  flex-shrink: 0;
+}
+
+.pv-accordion details[open] summary::after {
+  transform: rotate(225deg);
+}
+
+.pv-accordion summary:hover {
+  background: var(--pv-surface-raised);
+}
+
+.pv-accordion-body {
+  padding: 0 var(--pv-s4) var(--pv-s4);
+  color: var(--pv-text-muted);
+  line-height: 1.6;
+}
+
+.pv-accordion-body ul {
+  padding-left: 1.2em;
+}
+
+.pv-accordion-body li {
+  margin-bottom: var(--pv-s2);
+}
+
+/* About page: feature cards + honest comparison rows. */
+.pv-feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--pv-s3);
+  margin-top: var(--pv-s4);
+}
+
+.pv-feature-card {
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-md);
+  background: var(--pv-surface);
+  padding: var(--pv-s4);
+}
+
+.pv-feature-card h3 {
+  margin: var(--pv-s2) 0;
+  font-size: var(--pv-text-md);
+}
+
+.pv-feature-card p {
+  color: var(--pv-text-muted);
+  font-size: var(--pv-text-sm);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.pv-compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pv-s3);
+  margin-top: var(--pv-s4);
+}
+
+.pv-compare-row {
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-md);
+  background: var(--pv-surface);
+  padding: var(--pv-s4);
+  display: grid;
+  gap: var(--pv-s2);
+}
+
+.pv-compare-point {
+  font-weight: 600;
+}
+
+.pv-compare-us,
+.pv-compare-them {
+  color: var(--pv-text-muted);
+  font-size: var(--pv-text-sm);
+  line-height: 1.5;
+}
+
+.pv-compare-us strong {
+  color: var(--pv-accent);
+  font-weight: 600;
+}
+
+.pv-compare-them strong {
+  color: var(--pv-text-muted);
+  font-weight: 600;
+}
+
+@media (min-width: 720px) {
+  .pv-compare-row {
+    grid-template-columns: 180px 1fr 1fr;
+    align-items: start;
+  }
+}

@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { StatsDto } from '@pocketverse/shared';
 import { api, request } from '@/lib/api';
-import { ActivityIcon, OrbitLogo, ShieldIcon } from '@/components/icons';
+import { ActivityIcon, InfoIcon, OrbitLogo, ShieldIcon } from '@/components/icons';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useDialogs } from '@/components/dialogs';
 import { formatSize } from '@/components/ui';
@@ -40,6 +40,9 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </span>
       )}
       <nav>
+        <Link href="/about" className="pv-iconbtn" title="About Pocketverse" aria-label="About">
+          <InfoIcon />
+        </Link>
         <Link href="/security" className="pv-iconbtn" title="Security" aria-label="Security">
           <ShieldIcon />
         </Link>
