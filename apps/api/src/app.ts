@@ -57,6 +57,12 @@ export function createApp({ env, prisma, logger, gateway, queue }: AppDeps): exp
   jobQueue.register(worker.handlers, worker.onFinalFailure);
 
   app.disable('x-powered-by');
+  // Production runs behind a reverse proxy (Render/Koyeb). Without this,
+  // every request appears to come from the proxy's IP and the rate limiters
+  // would throttle all users as one client.
+  if (env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+  }
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
   app.use(express.json({ limit: '1mb' }));

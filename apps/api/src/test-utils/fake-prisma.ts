@@ -295,6 +295,33 @@ export function createFakePrisma() {
         connections.delete(where.id);
         return { ...row };
       },
+      // Supports the keep-alive sweep's stale-connection query.
+      findMany: async ({
+        where,
+      }: {
+        where: {
+          status?: StorageConnectionRow['status'];
+          OR?: { lastCheckedAt?: null | { lt: Date } }[];
+        };
+      }) => {
+        return [...connections.values()]
+          .filter((row) => {
+            if (where.status && row.status !== where.status) {
+              return false;
+            }
+            if (where.OR) {
+              return where.OR.some((clause) =>
+                clause.lastCheckedAt === null
+                  ? row.lastCheckedAt === null
+                  : clause.lastCheckedAt?.lt !== undefined &&
+                    row.lastCheckedAt !== null &&
+                    row.lastCheckedAt < clause.lastCheckedAt.lt,
+              );
+            }
+            return true;
+          })
+          .map((row) => ({ ...row }));
+      },
     },
     auditEvent: {
       create: async ({ data }: { data: { userId: string; type: string; metadata?: unknown } }) => {

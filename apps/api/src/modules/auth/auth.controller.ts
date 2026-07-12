@@ -10,10 +10,16 @@ export interface AuthControllerDeps {
 }
 
 export function createAuthController({ service, secureCookies }: AuthControllerDeps) {
+  // In production the web app and API live on different sites (e.g. vercel.app
+  // → onrender.com), and browsers drop SameSite=Strict cookies on cross-site
+  // requests entirely — sessions would silently never survive a reload. Cross-
+  // site cookies require SameSite=None together with Secure; locally (same
+  // site, plain http) Strict is the tighter and working choice.
+  const sameSite = secureCookies ? 'none' : 'strict';
   const cookieOptions = (expiresAt: Date): CookieOptions => ({
     httpOnly: true,
     secure: secureCookies,
-    sameSite: 'strict',
+    sameSite,
     path: '/api/auth',
     expires: expiresAt,
   });
@@ -27,7 +33,7 @@ export function createAuthController({ service, secureCookies }: AuthControllerD
   }
 
   function clearRefreshCookie(res: Response): void {
-    res.clearCookie(REFRESH_COOKIE, { path: '/api/auth' });
+    res.clearCookie(REFRESH_COOKIE, { path: '/api/auth', secure: secureCookies, sameSite });
   }
 
   return {

@@ -51,5 +51,5 @@ export function createTestApp(options: TestAppOptions | FakeGatewayOptions = {})
   };
 
   const app = createApp({ env, prisma, logger, gateway, queue });
-  return { app, prisma, gatewayCalls: calls, channelStore, queue, env };
+  return { app, prisma, gateway, logger, gatewayCalls: calls, channelStore, queue, env };
 }

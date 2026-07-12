@@ -7,7 +7,8 @@ private cloud storage account. Your files never sit on our servers; we hold only
 metadata and connection credentials, and we're honest with you about exactly what we can and
 cannot see.
 
-**Status:** Phase 4 of 5 — the Drive UI and trust surfaces. 🚧 Built in public.
+**Status:** Phase 5 of 5 — hardened and deployable. 🚀 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+for the free-tier deployment runbook (Vercel + Render + Neon + optional Upstash).
 
 ## Monorepo layout
 
@@ -26,8 +27,9 @@ packages/shared Zod schemas and types shared by both
 - **Passwords** hashed with argon2id (OWASP parameters). Identical errors for unknown email vs
   wrong password.
 - **Tokens:** 15-minute access JWTs (jose, HS256) + 30-day rotating refresh tokens stored only as
-  SHA-256 hashes, delivered as `httpOnly` `SameSite=Strict` cookies. Reused (stolen) refresh
-  tokens revoke the whole session family.
+  SHA-256 hashes, delivered as `httpOnly` cookies (`SameSite=Strict` locally; `None; Secure` in
+  production where web and API are different sites). Reused (stolen) refresh tokens revoke the
+  whole session family.
 - **Logging:** Pino with hard redaction of passwords, tokens, sessions, and key material —
   enforced by tests (`apps/api/src/lib/logger.test.ts`).
 - No secrets in git — everything comes from env (`.env.example` documents each variable).
@@ -82,6 +84,23 @@ packages/shared Zod schemas and types shared by both
   zero-knowledge claims.
 - **Activity log** (`/activity`): the audit events recorded since Phase 2, in friendly language
   with relative timestamps and cursor pagination.
+
+## Hardening & deployment (Phase 5)
+
+- **Deploy targets:** web on Vercel, API on Render (blueprint in `render.yaml`, migrations run on
+  every deploy), Postgres on Neon, optional Redis on Upstash — all free tiers. Full runbook with
+  env tables, verification checklist, and troubleshooting: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+- **Proxy-aware:** `trust proxy` in production so rate limits key on real client IPs, not the
+  load balancer's.
+- **Graceful shutdown:** SIGTERM stops accepting connections, drains in-flight requests, and
+  closes the database cleanly — deploys don't cut off upload parts mid-response.
+- **Cross-site sessions:** refresh cookies switch to `SameSite=None; Secure` in production
+  (Vercel ↔ Render are different sites; `Strict` would silently drop every session).
+- **Account keep-alive:** a daily sweep pings storage connections untouched for 30+ days with a
+  cheap health call, so the platform's inactivity rule never deletes a dormant user's account —
+  and with it their files. Failures mark the connection and land in the activity log.
+- **Client rate guardrails:** bounded upload concurrency, folder-upload thresholds
+  (`NEXT_PUBLIC_UPLOAD_*`), and a leave-page warning while uploads are in flight.
 
 ## Local development
 
@@ -142,5 +161,5 @@ and invalidates the session remotely — the channel and its contents stay in yo
 | 1     | Monorepo, encryption core, user auth                                | ✅             |
 | 2     | Storage connection (private channel, encrypted sessions, ADR)       | ✅             |
 | 3     | Streaming upload/download engine, chunking, folder CRUD             | ✅             |
-| 4     | Drive UI — design system, browser, honest onboarding, security page | ✅ this branch |
-| 5     | Hardening, deploy (Vercel + Render/Koyeb + Neon + Upstash), runbook | ⏳             |
+| 4     | Drive UI — design system, browser, honest onboarding, security page | ✅             |
+| 5     | Hardening, deploy (Vercel + Render + Neon + Upstash), runbook       | ✅ this branch |
