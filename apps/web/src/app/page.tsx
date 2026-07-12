@@ -9,8 +9,8 @@ export default function LandingPage() {
       </span>
       <h1>A whole universe in your pocket.</h1>
       <p>
-        A calm, familiar home for your files — kept in storage you control, with encrypted
-        connections and no surprises. We tell you exactly where everything lives.
+        Unlimited storage for your files — kept in storage you control, with encrypted connections
+        and no surprises. We tell you exactly where everything lives.
       </p>
       <div className="pv-hero-actions">
         <Link href="/register">
@@ -33,8 +33,11 @@ export default function LandingPage() {
         </div>
         <div className="pv-card">
           <UploadPortal />
-          <h3>Your storage, your files</h3>
-          <p>Files stream to storage you own. We keep only the map, never the bytes.</p>
+          <h3>Unlimited, and truly yours</h3>
+          <p>
+            No quotas, no tiers — files stream to storage you own. We keep only the map, never the
+            bytes.
+          </p>
         </div>
         <div className="pv-card">
           <ShieldIcon />

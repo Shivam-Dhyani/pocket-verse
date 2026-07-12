@@ -282,10 +282,23 @@ export function createConnectionService({
         // that list but can't open or download. Purge the user's drive so a
         // reconnect starts clean. (The bytes remain safe in the user's own
         // channel — we simply stop tracking them.)
+        const [clearedFiles, folderCount] = await Promise.all([
+          prisma.file.aggregate({ where: { ownerId: userId }, _count: true, _sum: { size: true } }),
+          prisma.folder.count({ where: { ownerId: userId } }),
+        ]);
         await prisma.file.deleteMany({ where: { ownerId: userId } });
         await prisma.folder.deleteMany({ where: { ownerId: userId } });
 
         await prisma.storageConnection.delete({ where: { id: connection.id } });
+        // The activity log is the user's record of exactly what stopped being
+        // tracked and when — "where did my files go?" must always have an answer.
+        if (clearedFiles._count > 0 || folderCount > 0) {
+          await audit.record(userId, AuditEventTypes.DRIVE_INDEX_CLEARED, {
+            files: clearedFiles._count,
+            folders: folderCount,
+            totalBytes: Number(clearedFiles._sum.size ?? 0n),
+          });
+        }
         await audit.record(userId, AuditEventTypes.CONNECTION_DISCONNECTED, {
           phoneMasked: connection.phoneMasked,
         });

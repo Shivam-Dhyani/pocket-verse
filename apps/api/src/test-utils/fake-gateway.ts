@@ -6,6 +6,7 @@ import type {
   TelegramGateway,
   UploadFileArgs,
 } from '../lib/telegram/gateway.js';
+import { AppError } from '../middleware/errors.js';
 
 /**
  * Scriptable TelegramGateway double. Defaults model the happy path — including
@@ -107,7 +108,12 @@ export function createFakeGateway(options: FakeGatewayOptions = {}) {
       calls.push({ method: 'downloadChunk', args: { messageId } });
       const bytes = channelStore.get(messageId);
       if (!bytes) {
-        throw new Error(`fake channel has no message ${messageId}`);
+        // Mirror the real gateway's error for a hand-deleted message.
+        throw new AppError(
+          404,
+          'CHUNK_MISSING',
+          'Part of this file is missing from your storage. It may have been deleted there.',
+        );
       }
       // Yield in small pieces to exercise real streaming paths.
       const pieceSize = Math.max(1, Math.ceil(bytes.length / 3));

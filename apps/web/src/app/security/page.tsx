@@ -56,21 +56,61 @@ export default function SecurityPage() {
         </section>
 
         <section className="pv-section">
-          <h2>Risks we want you to know</h2>
+          <h2>Telegram-powered storage: what “unlimited” really means</h2>
+          <p>
+            Your files live in a private channel inside <strong>your own Telegram account</strong>.
+            Telegram places no cap on how much a channel can hold — that is why your Pocketverse
+            space is genuinely unlimited: it is Telegram’s storage, and you own the account it lives
+            in. Telegram does limit a <em>single</em> upload to 2&nbsp;GB, so Pocketverse quietly
+            splits bigger files into parts and reassembles them when you download — large files
+            simply take longer, they are never rejected.
+          </p>
+
+          <h3 style={{ marginTop: 'var(--pv-s5)' }}>
+            When files can be lost (and how to prevent it)
+          </h3>
+          <p>
+            Apart from you deleting things inside Pocketverse, there are exactly three ways data can
+            disappear. Each one is preventable, and whenever Pocketverse detects a loss it writes it
+            to your <Link href="/activity">activity log</Link> so you always know what happened and
+            when.
+          </p>
           <ul>
             <li>
-              <strong>Inactivity deletion:</strong> the storage platform deletes accounts left
-              inactive (6 months by default). If that happens, the files stored there are gone. Keep
-              the account alive, or keep backups of anything irreplaceable.
+              <strong>Telegram’s inactivity rule.</strong> Telegram deletes accounts that stay away
+              too long — <em>6 months by default</em> — and a deleted account takes its channels and
+              files with it. Do this once, today: in Telegram open{' '}
+              <em>Settings → Privacy and Security → Delete my account → If away for</em> and set it
+              to <strong>12 months</strong>. Using Telegram or Pocketverse from time to time also
+              counts as activity.
             </li>
             <li>
-              <strong>Not end-to-end encrypted by the platform:</strong> files are encrypted in
-              transit, but the storage platform itself can technically access them under its own
-              terms.
+              <strong>Disconnecting your Telegram account from Pocketverse.</strong> Disconnecting
+              removes our access, so Pocketverse clears its listing of your files — the files
+              themselves remain in your “Pocketverse Storage” channel, but the app can no longer
+              show or download them, and reconnecting starts with an empty drive. Download anything
+              you still need <em>before</em> you disconnect. What was cleared is recorded in your
+              activity log.
             </li>
             <li>
-              <strong>Terms of service:</strong> using a personal account as bulk storage sits in a
-              gray area of the platform’s rules.
+              <strong>Touching the storage channel by hand.</strong> If you delete messages from the
+              “Pocketverse Storage” channel in the Telegram app — or delete the channel itself —
+              those files are gone for good. Treat that channel as machine-managed: don’t delete
+              from it manually. If Pocketverse finds a file’s data missing, it marks the file as
+              lost and records it in your activity log.
+            </li>
+          </ul>
+
+          <h3 style={{ marginTop: 'var(--pv-s5)' }}>Two more things to know</h3>
+          <ul>
+            <li>
+              <strong>Not end-to-end encrypted by Telegram:</strong> files are encrypted in transit,
+              but Telegram itself can technically access channel content under its own terms.
+            </li>
+            <li>
+              <strong>Terms of service:</strong> using a personal account as bulk file storage sits
+              in a gray area of Telegram’s rules. We believe personal use is reasonable, but it is
+              your account — we want you deciding with open eyes.
             </li>
           </ul>
         </section>

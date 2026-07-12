@@ -89,6 +89,30 @@ describe('upload → storage → download roundtrip', () => {
     expect(Buffer.compare(download.body as Buffer, content)).toBe(0);
   });
 
+  it('marks a file lost and logs it when its data was deleted in the channel', async () => {
+    const { api, queue, channelStore, prisma } = await setupConnected();
+    const content = randomBytes(6);
+    const { fileId } = await uploadWhole(api, content, 'gone.bin');
+    await queue.drain();
+
+    // Simulate the user hand-deleting the message from their storage channel.
+    channelStore.clear();
+
+    // The download fails (stream may abort mid-response — status is best-effort).
+    await api
+      .get(`/api/files/${fileId}/download`)
+      .buffer(true)
+      .catch(() => null);
+
+    // The file is marked as no longer retrievable…
+    const file = await api.get(`/api/files/${fileId}`);
+    expect(file.body.file.status).toBe('error');
+
+    // …and the loss is written to the user's activity log with what was lost.
+    const lost = prisma._state.auditEvents.find((event) => event.type === 'file.unreachable');
+    expect(lost?.metadata).toMatchObject({ fileId, name: 'gone.bin', size: 6 });
+  });
+
   it('records a plain sha256 checksum for single-chunk files', async () => {
     const { api, queue } = await setupConnected();
     const content = randomBytes(6); // fits one chunk

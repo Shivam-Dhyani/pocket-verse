@@ -319,6 +319,10 @@ describe('connection flow', () => {
     expect(prisma._state.files.size).toBe(0);
     expect(prisma._state.folders.size).toBe(0);
     expect(prisma._state.fileChunks.size).toBe(0);
+
+    // The user can see exactly what stopped being tracked in the activity log.
+    const cleared = prisma._state.auditEvents.find((event) => event.type === 'drive.index_cleared');
+    expect(cleared?.metadata).toMatchObject({ files: 1, folders: 1, totalBytes: 4 });
   });
 
   it('disconnect still deletes locally when remote logout fails', async () => {

@@ -340,13 +340,32 @@ export function createFilesService({
       const session = decryptConnectionSession(connection, keyring);
       const channel = requireChannel(connection);
       const chunks = file.chunks;
+      const { name: fileName, size: fileSize } = file;
 
       async function* stream(): AsyncIterable<Buffer> {
         for (const chunk of chunks) {
           if (!chunk.telegramMessageId) {
             throw new AppError(500, 'INTERNAL', 'File metadata is inconsistent.');
           }
-          yield* gateway.downloadChunk(session, channel, chunk.telegramMessageId);
+          try {
+            yield* gateway.downloadChunk(session, channel, chunk.telegramMessageId);
+          } catch (error) {
+            // The message backing this chunk was deleted in the user's storage
+            // (by hand, or the channel itself was removed). Mark the file and
+            // write the loss to the activity log so the user can always see
+            // exactly what was lost and when.
+            if (error instanceof AppError && error.code === 'CHUNK_MISSING') {
+              await prisma.file
+                .update({ where: { id: fileId }, data: { status: 'ERROR' } })
+                .catch(() => undefined);
+              await audit.record(userId, AuditEventTypes.FILE_UNREACHABLE, {
+                fileId,
+                name: fileName,
+                size: Number(fileSize),
+              });
+            }
+            throw error;
+          }
         }
       }
 

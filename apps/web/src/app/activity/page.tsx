@@ -31,6 +31,13 @@ function describe(type: string, metadata: Record<string, unknown> | null): strin
       return `Deleted ${name || 'a file'}`;
     case 'folder.deleted':
       return 'Deleted a folder';
+    case 'drive.index_cleared': {
+      const files = typeof metadata?.files === 'number' ? metadata.files : 0;
+      const folders = typeof metadata?.folders === 'number' ? metadata.folders : 0;
+      return `Disconnecting cleared your drive listing — ${files} ${files === 1 ? 'file' : 'files'} and ${folders} ${folders === 1 ? 'folder' : 'folders'} are no longer tracked here (the files themselves stay in your storage channel)`;
+    }
+    case 'file.unreachable':
+      return `${name || 'A file'} could not be read from your storage — it looks like it was deleted there, so it is marked as lost`;
     default:
       return type;
   }

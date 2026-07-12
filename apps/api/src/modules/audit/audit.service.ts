@@ -18,6 +18,12 @@ export const AuditEventTypes = {
   FILE_UPLOAD_FAILED: 'file.upload_failed',
   FILE_DELETED: 'file.deleted',
   FOLDER_DELETED: 'folder.deleted',
+  /** Disconnect cleared the drive index — records exactly what stopped being
+   *  tracked (the bytes stay in the user's own storage channel). */
+  DRIVE_INDEX_CLEARED: 'drive.index_cleared',
+  /** A file's bytes could not be read from the user's storage (its message was
+   *  deleted there by hand) — the user-visible record of what was lost. */
+  FILE_UNREACHABLE: 'file.unreachable',
 } as const;
 
 export type AuditEventType = (typeof AuditEventTypes)[keyof typeof AuditEventTypes];
