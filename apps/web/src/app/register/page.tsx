@@ -3,9 +3,10 @@
 import { useMutation } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { registerSchema } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
+import { useForwardIfAuthed } from '@/components/auth-forward';
 import { useAuthStore } from '@/stores/auth';
 
 export default function RegisterPage() {
@@ -14,11 +15,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Already signed in (e.g. pressed Back onto this page)? Skip straight to the drive.
-  useEffect(() => {
-    if (useAuthStore.getState().accessToken) {
-      router.replace('/drive');
-    }
-  }, [router]);
+  useForwardIfAuthed();
 
   const mutation = useMutation({
     mutationFn: api.register,

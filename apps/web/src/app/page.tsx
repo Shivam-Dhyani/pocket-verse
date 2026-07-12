@@ -1,9 +1,11 @@
 import Link from 'next/link';
+import { AuthForward } from '@/components/auth-forward';
 import { LockIcon, OrbitLogo, ShieldIcon, UploadPortal } from '@/components/icons';
 
 export default function LandingPage() {
   return (
     <main className="pv-hero">
+      <AuthForward />
       <span className="pv-brand">
         <OrbitLogo width={24} height={24} /> Pocketverse
       </span>

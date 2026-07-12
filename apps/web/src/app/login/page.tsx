@@ -3,9 +3,10 @@
 import { useMutation } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { loginSchema } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
+import { useForwardIfAuthed } from '@/components/auth-forward';
 import { useAuthStore } from '@/stores/auth';
 
 export default function LoginPage() {
@@ -15,11 +16,7 @@ export default function LoginPage() {
 
   // Already signed in (e.g. pressed Back onto this page)? Go straight to the
   // drive instead of showing the sign-in form again.
-  useEffect(() => {
-    if (useAuthStore.getState().accessToken) {
-      router.replace('/drive');
-    }
-  }, [router]);
+  useForwardIfAuthed();
 
   const mutation = useMutation({
     mutationFn: api.login,
