@@ -7,6 +7,7 @@ import { useState, type FormEvent } from 'react';
 import { loginSchema } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
 import { useForwardIfAuthed } from '@/components/auth-forward';
+import { PasswordField } from '@/components/password-field';
 import { useAuthStore } from '@/stores/auth';
 
 export default function LoginPage() {
@@ -66,10 +67,12 @@ export default function LoginPage() {
             <span>Email</span>
             <input name="email" type="email" autoComplete="email" required />
           </label>
-          <label className="pv-field">
-            <span>Password</span>
-            <input name="password" type="password" autoComplete="current-password" required />
-          </label>
+          <PasswordField
+            label="Password"
+            name="password"
+            autoComplete="current-password"
+            required
+          />
           <button className="pv-button" type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? 'Signing in…' : 'Sign in'}
           </button>

@@ -9,6 +9,7 @@ import { ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
 import { useAuthStore } from '@/stores/auth';
 import { OrbitLogo, ShieldIcon } from '@/components/icons';
+import { PasswordField } from '@/components/password-field';
 
 type Stage = 'disclosures' | 'phone' | 'code' | 'password' | 'done';
 
@@ -192,10 +193,12 @@ export default function ConnectPage() {
             <h1>Two-step verification</h1>
             <form onSubmit={submit((password) => verifyPassword.mutate({ password }), 'password')}>
               <p className="pv-sub">This account has two-step verification enabled.</p>
-              <label className="pv-field">
-                <span>Two-step verification password</span>
-                <input name="password" type="password" autoComplete="current-password" required />
-              </label>
+              <PasswordField
+                label="Two-step verification password"
+                name="password"
+                autoComplete="current-password"
+                required
+              />
               <button className="pv-button pv-button--block" type="submit" disabled={busy}>
                 {verifyPassword.isPending ? 'Verifying…' : 'Finish connecting'}
               </button>

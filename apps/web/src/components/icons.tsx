@@ -145,6 +145,14 @@ export const EyeIcon = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+export const EyeOffIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M6.6 6.6A13.4 13.4 0 0 0 2.5 12S6 18.2 12 18.2c1.9 0 3.6-.6 5-1.5M10.1 6a8.8 8.8 0 0 1 1.9-.2c6 0 9.5 6.2 9.5 6.2a16.5 16.5 0 0 1-2.2 2.8" />
+    <path d="M10.2 10.2a2.6 2.6 0 0 0 3.6 3.6" />
+    <path d="m4 4 16 16" />
+  </svg>
+);
+
 export const XIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="m6 6 12 12M18 6 6 18" />

@@ -7,6 +7,7 @@ import { useState, type FormEvent } from 'react';
 import { registerSchema } from '@pocketverse/shared';
 import { api, ApiError } from '@/lib/api';
 import { useForwardIfAuthed } from '@/components/auth-forward';
+import { PasswordField } from '@/components/password-field';
 import { useAuthStore } from '@/stores/auth';
 
 export default function RegisterPage() {
@@ -65,10 +66,12 @@ export default function RegisterPage() {
             <span>Email</span>
             <input name="email" type="email" autoComplete="email" required />
           </label>
-          <label className="pv-field">
-            <span>Password (at least 10 characters)</span>
-            <input name="password" type="password" autoComplete="new-password" required />
-          </label>
+          <PasswordField
+            label="Password (at least 10 characters)"
+            name="password"
+            autoComplete="new-password"
+            required
+          />
           <button className="pv-button" type="submit" disabled={mutation.isPending}>
             {mutation.isPending ? 'Creating your account…' : 'Create account'}
           </button>

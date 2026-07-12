@@ -1057,3 +1057,37 @@ button {
   width: 14px;
   height: 14px;
 }
+
+/* Password field with an in-field show/hide toggle. */
+.pv-password-wrap {
+  position: relative;
+  display: block;
+  /* Cancel the label styling .pv-field applies to spans. */
+  margin-bottom: 0;
+}
+
+.pv-password-wrap input {
+  padding-right: 42px;
+}
+
+.pv-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: var(--pv-radius-sm);
+  background: transparent;
+  color: var(--pv-text-muted);
+  cursor: pointer;
+  transition: color var(--pv-fast);
+}
+
+.pv-password-toggle:hover {
+  color: var(--pv-text);
+}
