@@ -16,12 +16,18 @@ export function UploadPanel({ onSettled }: { onSettled: () => void }) {
   if (groups.length === 0) {
     return null;
   }
+  const anyActive = groups.some((group) => group.state === 'uploading' || group.state === 'paused');
 
   return (
     <div className="pv-uploads">
       {groups.map((group) => (
         <UploadRow key={group.key} group={group} onSettled={onSettled} />
       ))}
+      {anyActive && (
+        <p className="pv-footnote" style={{ margin: 'var(--pv-s2) 0 0' }}>
+          Keep this page open until uploads finish — closing or refreshing stops them.
+        </p>
+      )}
     </div>
   );
 }

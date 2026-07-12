@@ -158,9 +158,20 @@ export default function DrivePage() {
         const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
         const ok = await dialogs.confirm({
           title: 'This is a big upload',
-          message: `This folder has ${files.length.toLocaleString()} files (${formatSize(
-            totalBytes,
-          )}). It'll upload in the background and may take a while — you can keep using Pocketverse while it works. Ready to go?`,
+          message: (
+            <>
+              <p style={{ margin: '0 0 var(--pv-s3)' }}>
+                This folder has {files.length.toLocaleString()} files ({formatSize(totalBytes)}).
+                It'll upload in the background — you can keep using Pocketverse while it works, but
+                it might take a while to finish. If you'd rather not wait on one long upload, you
+                can also add it in smaller batches, a portion at a time.
+              </p>
+              <p style={{ margin: 0 }}>
+                One thing to remember: <strong>keep this tab open until it's done</strong> — closing
+                or refreshing the page stops uploads that are still on their way.
+              </p>
+            </>
+          ),
           confirmLabel: 'Start upload',
           cancelLabel: 'Not now',
         });

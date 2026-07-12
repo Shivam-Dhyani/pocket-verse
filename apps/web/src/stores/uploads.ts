@@ -26,6 +26,30 @@ export interface UploadBatch {
   label: string;
 }
 
+/**
+ * Leaving the page (close, refresh, external link) kills in-flight uploads, so
+ * while any upload is active we arm the browser's leave-page confirmation.
+ * Browsers deliberately only allow their own generic dialog here — no custom
+ * text or in-app modal is possible on unload — so the friendly guidance
+ * ("keep this tab open", batch advice) lives in our own pre-upload modals and
+ * the upload panel instead. Uploads that already reached the server keep
+ * syncing in the background either way; resumable sessions mean a re-drop of
+ * the same file continues where it left off.
+ */
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', (event) => {
+    const active = Object.values(useUploadsStore.getState().uploads).some(
+      (entry) => entry.state === 'uploading' || entry.state === 'paused',
+    );
+    if (active) {
+      event.preventDefault();
+      // Required for the confirmation to appear in Chrome; the string itself
+      // is ignored by modern browsers, which show their own generic message.
+      event.returnValue = '';
+    }
+  });
+}
+
 interface UploadsStore {
   uploads: Record<string, UploadEntry>;
   set: (id: string, patch: Partial<UploadEntry>) => void;
