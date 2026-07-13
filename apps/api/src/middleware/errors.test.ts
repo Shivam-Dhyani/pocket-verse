@@ -51,7 +51,7 @@ describe('error handler', () => {
     const { statusCode, body } = run(new PrismaClientKnownRequestError('P2021'));
     expect(statusCode).toBe(503);
     expect(body?.error.code).toBe('DATABASE_NOT_MIGRATED');
-    expect(body?.error.message).toContain('prisma:migrate');
+    expect(body?.error.message).toContain('prisma:deploy');
   });
 
   it('maps a Prisma initialization failure to DATABASE_UNREACHABLE', () => {

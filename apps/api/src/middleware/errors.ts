@@ -84,7 +84,7 @@ function classifyDatabaseError(
     return {
       code: 'DATABASE_NOT_MIGRATED',
       message: 'The database is reachable but its tables are missing.',
-      logHint: 'Run migrations: pnpm --filter @pocketverse/api prisma:migrate',
+      logHint: 'Run migrations: pnpm --filter @pocketverse/api prisma:deploy',
     };
   }
   if (UNREACHABLE_CODES.has(prismaCode)) {

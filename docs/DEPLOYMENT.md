@@ -34,8 +34,11 @@ through the API into each user's own storage. Our footprint is metadata
 
 1. https://neon.tech → new project (any region close to your Render region).
 2. Copy the **direct** connection string (not the pooled one — simplest for
-   Prisma migrations, and free-tier traffic is well within direct limits).
-   It looks like `postgresql://user:pass@ep-xxx.region.aws.neon.tech/neondb?sslmode=require`.
+   Prisma migrations, and free-tier traffic is well within direct limits) and
+   append `&connect_timeout=15`, so it ends with
+   `?sslmode=require&connect_timeout=15`. Neon suspends idle databases and
+   takes a few seconds to wake; Prisma's default 5 s timeout gives up first
+   (`P1001 Can't reach database server`).
 3. That string is your `DATABASE_URL`. Nothing else to do — migrations run
    automatically on API deploys.
 
@@ -129,6 +132,7 @@ What's already handled in code for this environment:
 | Uploads pause mid-file after a deploy | Expected: staging disk is wiped on deploys. The client resumes from the server's part cursor automatically.               |
 | `FLOOD_WAIT` in logs                  | The storage platform is throttling. The queue backs off and retries by itself; nothing to do.                             |
 | Neon "too many connections"           | Use the direct URL with default Prisma pool, or switch `DATABASE_URL` to Neon's pooled string.                            |
+| `P1001 Can't reach database server`   | Neon's compute is waking from idle and Prisma timed out. Append `connect_timeout=15` to `DATABASE_URL` and retry.         |
 
 ## Operations
 
