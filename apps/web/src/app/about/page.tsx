@@ -14,7 +14,7 @@ const FEATURES = [
   {
     icon: <UploadPortal width={20} height={20} />,
     title: 'Truly unlimited storage',
-    body: 'Your files live in storage you own, with no quota from us and no platform cap on total space. Files of any size are welcome — big ones are split into parts behind the scenes and reassembled when you download.',
+    body: 'Your files live in a private channel of your own Telegram account, and Telegram places no cap on total space. Files of any size are welcome — big ones are split into parts behind the scenes and reassembled when you download.',
   },
   {
     icon: <FolderIcon width={20} height={20} />,
@@ -24,22 +24,22 @@ const FEATURES = [
   {
     icon: <LockIcon width={20} height={20} />,
     title: 'Resumable, honest transfers',
-    body: 'Uploads happen in small parts and survive hiccups: pause, resume, or retry from where things stopped. Progress you see is progress that actually happened — never an animation pretending to be one.',
+    body: 'Uploads happen in small parts and survive hiccups — an interrupted upload continues from where it stopped instead of starting over. Progress you see is progress that actually happened, never an animation pretending to be one.',
   },
   {
     icon: <ShieldIcon width={20} height={20} />,
     title: 'Security you can read',
-    body: 'Your storage connection is encrypted at rest with AES-256-GCM. The Security page explains in plain language what we can and cannot see — including the parts other services would rather not mention.',
+    body: 'Your Telegram connection is encrypted at rest with AES-256-GCM. The Security page explains in plain language what we can and cannot see — including the parts other services would rather not mention.',
   },
   {
     icon: <ActivityIcon width={20} height={20} />,
     title: 'A memory of everything',
-    body: 'Sign-ins, connections, uploads, deletions — and even data loss, if it ever happens — are written to an activity log only you can read. You will never have to wonder what happened to a file.',
+    body: 'Your activity log records every account event: sign-ups and sign-ins, connecting or disconnecting Telegram, every upload (including failed ones), every file and folder deletion, connection health issues — and if a file is ever lost outside the app, that is recorded too, with what was lost and when. Only you can read it.',
   },
   {
     icon: <OrbitLogo width={20} height={20} />,
     title: 'You can always leave',
-    body: 'The bytes sit in your own storage account, not on our servers. Disconnect at any time and the files remain yours, right where they are.',
+    body: 'The bytes sit in your own Telegram account, not on our servers. Disconnect at any time and the files remain yours, right where they are.',
   },
 ];
 
@@ -50,22 +50,22 @@ const COMPARISON: {
 }[] = [
   {
     point: 'Free space',
-    pocketverse: 'Unlimited — no quota, no tiers',
+    pocketverse: 'Unlimited — backed by Telegram, no quota, no tiers',
     others: 'Google Drive: 15 GB · iCloud: 5 GB, then paid plans',
   },
   {
     point: 'Where your files live',
-    pocketverse: 'In a private channel of your own storage account',
+    pocketverse: 'In a private channel of your own Telegram account',
     others: "On Google's / Apple's servers, under their account",
   },
   {
     point: 'What the service keeps',
-    pocketverse: 'Only the map (names, folders, sizes) — never the file bytes',
+    pocketverse: 'Only the map (names, folders, sizes) — the bytes stay in Telegram, never with us',
     others: 'The files themselves',
   },
   {
     point: 'If you stop using it',
-    pocketverse: 'Disconnect and your files stay in your account',
+    pocketverse: 'Disconnect anytime — your files stay in your Telegram channel',
     others: 'Files are locked to the platform; export first',
   },
   {
@@ -74,9 +74,10 @@ const COMPARISON: {
     others: 'Policy documents',
   },
   {
-    point: 'Where they win (honestly)',
-    pocketverse: 'Transfers are slower, and there is no sharing or live document editing yet',
-    others: 'Faster CDNs, collaboration, native mobile apps',
+    point: 'Speed & sharing',
+    pocketverse:
+      'Steady, dependable transfers today — and getting faster as we grow onto dedicated infrastructure. Sharing and collaboration are on the roadmap.',
+    others: 'Faster for large libraries; built around team collaboration',
   },
 ];
 
@@ -106,10 +107,7 @@ export default function AboutPage() {
 
         <section className="pv-section">
           <h2>How it compares to Google Drive &amp; iCloud</h2>
-          <p>
-            We want you choosing with open eyes — including the rows where the big players are
-            genuinely better.
-          </p>
+          <p>An honest look at how we stack up — so you can choose with open eyes.</p>
           <div className="pv-compare">
             <div className="pv-compare-head" aria-hidden="true">
               <span />

@@ -112,6 +112,9 @@ interface Controller {
 }
 
 const controllers = new Map<string, Controller>();
+// Uploads the user cancelled: part loops exit, queued pool jobs are skipped,
+// and a session created in the race window is cleaned up.
+const cancelledIds = new Set<string>();
 let counter = 0;
 
 /**
@@ -148,6 +151,9 @@ async function beginUpload(
   folderId: string | null,
   onSettled: () => void,
 ): Promise<void> {
+  if (cancelledIds.has(id)) {
+    return;
+  }
   try {
     const { upload } = await request<{ upload: UploadSessionDto }>('/api/files/uploads', {
       method: 'POST',
@@ -159,16 +165,66 @@ async function beginUpload(
         folderId,
       },
     });
+    // Cancelled while the session was being created — remove the file record
+    // it just made, and don't start the loop.
+    if (cancelledIds.has(id)) {
+      void deleteServerFile(upload.fileId);
+      return;
+    }
     controllers.set(id, { file, session: upload, nextPart: upload.nextPart, paused: false });
     useUploadsStore.getState().set(id, { fileId: upload.fileId });
     await runLoop(id, onSettled);
   } catch (error) {
+    if (cancelledIds.has(id)) {
+      return;
+    }
     useUploadsStore.getState().set(id, {
       state: 'error',
       error: error instanceof ApiError ? error.message : 'Upload failed',
     });
     onSettled();
   }
+}
+
+/** Server-side delete: removes the file row and its bytes from the user's storage. */
+async function deleteServerFile(fileId: string): Promise<void> {
+  try {
+    await request<void>(`/api/files/${fileId}`, { method: 'DELETE', auth: true });
+  } catch {
+    // Best-effort: the drive refresh will show anything that survived.
+  }
+}
+
+/**
+ * Cancel a set of uploads: stop the part loops, skip anything still waiting in
+ * the pool, and delete every file the batch already created — from our
+ * database AND from the user's storage — so a cancelled upload leaves no
+ * half-arrived folder behind. Entries vanish from the panel immediately;
+ * deletions run in the background and refresh the drive when done.
+ */
+export function cancelUploads(entryIds: string[], onSettled: () => void): void {
+  const store = useUploadsStore.getState();
+  const fileIds: string[] = [];
+  for (const id of entryIds) {
+    cancelledIds.add(id);
+    const ctrl = controllers.get(id);
+    if (ctrl) {
+      ctrl.paused = true; // halts the loop at the next part boundary
+    }
+    const entry = store.uploads[id];
+    if (entry?.fileId) {
+      fileIds.push(entry.fileId);
+    }
+    controllers.delete(id);
+  }
+  store.removeMany(entryIds);
+
+  void (async () => {
+    for (const fileId of fileIds) {
+      await deleteServerFile(fileId);
+    }
+    onSettled();
+  })();
 }
 
 export async function startUpload(
@@ -201,10 +257,16 @@ export function runUploads(jobs: UploadJob[], onSettled: () => void, concurrency
   async function worker(): Promise<void> {
     while (cursor < jobs.length) {
       const job = jobs[cursor++]!;
+      if (cancelledIds.has(job.id)) {
+        continue;
+      }
       let folderId: string | null;
       try {
         folderId = await job.resolveFolderId();
       } catch (error) {
+        if (cancelledIds.has(job.id)) {
+          continue;
+        }
         useUploadsStore.getState().set(job.id, {
           state: 'error',
           error: error instanceof ApiError ? error.message : 'Could not create this folder.',
@@ -251,6 +313,9 @@ async function runLoop(id: string, onSettled: () => void): Promise<void> {
   const { session } = ctrl;
 
   while (ctrl.nextPart < session.totalParts) {
+    if (cancelledIds.has(id)) {
+      return; // cancelled: entry already removed, deletion runs separately
+    }
     if (ctrl.paused) {
       store.set(id, { state: 'paused' });
       return; // resume() re-enters the loop from ctrl.nextPart
@@ -268,6 +333,9 @@ async function runLoop(id: string, onSettled: () => void): Promise<void> {
         body: slice,
       });
     } catch (error) {
+      if (cancelledIds.has(id)) {
+        return;
+      }
       store.set(id, {
         state: 'error',
         error: error instanceof ApiError ? error.message : 'Network error — resume to retry.',
@@ -290,6 +358,9 @@ async function runLoop(id: string, onSettled: () => void): Promise<void> {
       ctrl.nextPart = payload.error.nextPart;
       continue;
     }
+    if (cancelledIds.has(id)) {
+      return;
+    }
     store.set(id, {
       state: 'error',
       error: payload?.error?.message ?? 'The upload failed. Resume to retry.',
@@ -298,6 +369,9 @@ async function runLoop(id: string, onSettled: () => void): Promise<void> {
     return;
   }
 
+  if (cancelledIds.has(id)) {
+    return; // cancelled as the last part landed — deletion cleans it up
+  }
   // Bytes are now fully on our server, but the real work — syncing to the
   // user's storage — is still running. Show a brief "Uploaded ✓" beat, then
   // dismiss so the file row's honest "syncing X%" badge (which was hidden

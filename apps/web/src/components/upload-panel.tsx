@@ -1,14 +1,15 @@
 'use client';
 
 import {
+  cancelUploads,
   dismissGroup,
-  pauseGroup,
   resumeGroup,
   toUploadGroups,
   useUploadsStore,
   type UploadGroup,
 } from '@/stores/uploads';
-import { FolderIcon, PauseIcon, PlayIcon, UploadPortal, XIcon } from '@/components/icons';
+import { useDialogs } from '@/components/dialogs';
+import { FolderIcon, PlayIcon, UploadPortal, XIcon } from '@/components/icons';
 
 export function UploadPanel({ onSettled }: { onSettled: () => void }) {
   const uploads = useUploadsStore((state) => state.uploads);
@@ -46,7 +47,23 @@ function statusText(group: UploadGroup): string {
 }
 
 function UploadRow({ group, onSettled }: { group: UploadGroup; onSettled: () => void }) {
+  const dialogs = useDialogs();
   const isFolder = group.kind === 'folder';
+
+  async function confirmCancel() {
+    const what = isFolder ? `“${group.label}” and its files` : `“${group.label}”`;
+    const ok = await dialogs.confirm({
+      title: 'Cancel this upload?',
+      message: `This stops the upload of ${what}. Anything from it that already reached your drive will be removed — from Pocketverse and from your Telegram storage — so nothing arrives half-finished.`,
+      confirmLabel: 'Cancel upload',
+      cancelLabel: 'Keep uploading',
+      danger: true,
+    });
+    if (ok) {
+      cancelUploads(group.entryIds, onSettled);
+    }
+  }
+
   return (
     <div className="pv-upload-item">
       <div className="top">
@@ -68,27 +85,27 @@ function UploadRow({ group, onSettled }: { group: UploadGroup; onSettled: () => 
           )}
         </span>
         <span className="pct">{statusText(group)}</span>
-        {group.state === 'uploading' && (
+        {(group.state === 'uploading' || group.state === 'paused') && (
           <button
             className="pv-iconbtn"
             type="button"
-            title="Pause"
-            onClick={() => pauseGroup(group.entryIds)}
+            title="Cancel upload"
+            onClick={() => void confirmCancel()}
           >
-            <PauseIcon width={15} height={15} />
+            <XIcon width={15} height={15} />
           </button>
         )}
-        {(group.state === 'paused' || group.state === 'error') && (
+        {group.state === 'error' && (
           <button
             className="pv-iconbtn"
             type="button"
-            title="Resume"
+            title="Retry"
             onClick={() => resumeGroup(group.entryIds, onSettled)}
           >
             <PlayIcon width={15} height={15} />
           </button>
         )}
-        {group.state !== 'uploading' && (
+        {(group.state === 'error' || group.state === 'syncing') && (
           <button
             className="pv-iconbtn"
             type="button"

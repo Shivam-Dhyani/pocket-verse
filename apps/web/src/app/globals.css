@@ -1185,21 +1185,24 @@ button {
   margin: 0;
 }
 
+/* One card that reads as a single table: header row + divided body rows. */
 .pv-compare {
-  display: flex;
-  flex-direction: column;
-  gap: var(--pv-s3);
   margin-top: var(--pv-s4);
-}
-
-.pv-compare-row {
   border: 1px solid var(--pv-border);
   border-radius: var(--pv-radius-lg);
   background: var(--pv-surface);
   box-shadow: var(--pv-shadow);
+  overflow: hidden;
+}
+
+.pv-compare-row {
   padding: var(--pv-s4) var(--pv-s5);
   display: grid;
   gap: var(--pv-s2);
+}
+
+.pv-compare-row + .pv-compare-row {
+  border-top: 1px solid var(--pv-border);
 }
 
 .pv-compare-point {
@@ -1228,9 +1231,11 @@ button {
 
 .pv-compare-head {
   display: none;
-  padding: 0 var(--pv-s5);
+  padding: var(--pv-s3) var(--pv-s5);
   font-size: var(--pv-text-sm);
   font-weight: 600;
+  background: var(--pv-surface-raised);
+  border-bottom: 1px solid var(--pv-border);
 }
 
 .pv-compare-head .them {
@@ -1244,12 +1249,13 @@ button {
 @media (min-width: 720px) {
   .pv-compare-head {
     display: grid;
-    grid-template-columns: 180px 1fr 1fr;
-    gap: var(--pv-s2);
+    grid-template-columns: 170px 1fr 1fr;
+    column-gap: var(--pv-s5);
   }
 
   .pv-compare-row {
-    grid-template-columns: 180px 1fr 1fr;
+    grid-template-columns: 170px 1fr 1fr;
+    column-gap: var(--pv-s5);
     align-items: start;
   }
 
