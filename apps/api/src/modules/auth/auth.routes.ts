@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { loginSchema, registerSchema } from '@pocketverse/shared';
+import {
+  changePasswordSchema,
+  forgotPasswordSchema,
+  loginSchema,
+  registerSchema,
+  resetPasswordSchema,
+} from '@pocketverse/shared';
 import type { JwtHelpers } from '../../lib/jwt.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
@@ -21,6 +27,14 @@ export function createAuthRouter({ service, jwt, secureCookies }: AuthRouterDeps
   router.post('/refresh', controller.refresh);
   router.post('/logout', controller.logout);
   router.get('/me', requireAuth(jwt), controller.me);
+  router.post(
+    '/change-password',
+    requireAuth(jwt),
+    validateBody(changePasswordSchema),
+    controller.changePassword,
+  );
+  router.post('/forgot-password', validateBody(forgotPasswordSchema), controller.forgotPassword);
+  router.post('/reset-password', validateBody(resetPasswordSchema), controller.resetPassword);
 
   return router;
 }

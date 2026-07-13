@@ -24,11 +24,21 @@ interface RefreshTokenRow {
   createdAt: Date;
 }
 
+interface PasswordResetTokenRow {
+  id: string;
+  tokenHash: string;
+  userId: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
+}
+
 interface StorageConnectionRow {
   id: string;
   userId: string;
   status: 'PENDING_CODE' | 'PENDING_PASSWORD' | 'CONNECTED' | 'ERROR';
   phoneMasked: string;
+  encryptedPhone?: string | null;
   wrappedDataKey: string;
   encryptedSession: string | null;
   encryptedPending: string | null;
@@ -112,6 +122,7 @@ function matchesIdFilter(value: string | null, filter: IdFilter | undefined): bo
 export function createFakePrisma() {
   const users = new Map<string, UserRow>();
   const refreshTokens = new Map<string, RefreshTokenRow>();
+  const passwordResetTokens = new Map<string, PasswordResetTokenRow>();
   const connections = new Map<string, StorageConnectionRow>();
   const auditEvents: AuditEventRow[] = [];
   const folders = new Map<string, FolderRow>();
@@ -176,6 +187,52 @@ export function createFakePrisma() {
         users.set(user.id, user);
         return { ...user };
       },
+      update: async ({
+        where,
+        data,
+      }: {
+        where: { id: string };
+        data: { passwordHash?: string };
+      }) => {
+        const row = users.get(where.id);
+        if (!row) {
+          throw new Error('Record not found');
+        }
+        Object.assign(row, data, { updatedAt: new Date() });
+        return { ...row };
+      },
+    },
+    passwordResetToken: {
+      create: async ({
+        data,
+      }: {
+        data: { tokenHash: string; userId: string; expiresAt: Date };
+      }) => {
+        const row: PasswordResetTokenRow = {
+          id: randomUUID(),
+          usedAt: null,
+          createdAt: new Date(),
+          ...data,
+        };
+        passwordResetTokens.set(row.id, row);
+        return { ...row };
+      },
+      findUnique: async ({ where }: { where: { tokenHash: string } }) => {
+        for (const row of passwordResetTokens.values()) {
+          if (row.tokenHash === where.tokenHash) {
+            return { ...row };
+          }
+        }
+        return null;
+      },
+      update: async ({ where, data }: { where: { id: string }; data: { usedAt?: Date } }) => {
+        const row = passwordResetTokens.get(where.id);
+        if (!row) {
+          throw new Error('Record not found');
+        }
+        Object.assign(row, data);
+        return { ...row };
+      },
     },
     refreshToken: {
       create: async ({
@@ -219,14 +276,23 @@ export function createFakePrisma() {
         where,
         data,
       }: {
-        where: { userId?: string; tokenHash?: string; revokedAt?: null };
+        where: {
+          userId?: string;
+          tokenHash?: string | { not: string };
+          revokedAt?: null;
+        };
         data: { revokedAt?: Date };
       }) => {
         let count = 0;
         for (const row of refreshTokens.values()) {
+          const tokenHashMatches =
+            where.tokenHash === undefined ||
+            (typeof where.tokenHash === 'string'
+              ? row.tokenHash === where.tokenHash
+              : row.tokenHash !== where.tokenHash.not);
           const matches =
             (where.userId === undefined || row.userId === where.userId) &&
-            (where.tokenHash === undefined || row.tokenHash === where.tokenHash) &&
+            tokenHashMatches &&
             (!('revokedAt' in where) || row.revokedAt === where.revokedAt);
           if (matches) {
             Object.assign(row, data);

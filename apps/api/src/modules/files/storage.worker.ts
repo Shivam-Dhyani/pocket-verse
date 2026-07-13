@@ -5,6 +5,7 @@ import type { MasterKeyring } from '../../lib/crypto/index.js';
 import type { KeyedMutex } from '../../lib/mutex.js';
 import type { TelegramGateway } from '../../lib/telegram/gateway.js';
 import type { FinalFailureHandler, JobHandlers } from '../../lib/queue/index.js';
+import { AppError } from '../../middleware/errors.js';
 import { AuditEventTypes, type AuditService } from '../audit/audit.service.js';
 import { decryptConnectionSession, requireChannel } from '../connection/session.js';
 
@@ -135,6 +136,31 @@ export function createStorageWorker({
     },
   };
 
+  /**
+   * A SESSION_REVOKED failure means the user ended Pocketverse's session from
+   * inside the Telegram app. Mark the connection broken (once) and write the
+   * dedicated activity event, so the UI can explain what actually happened
+   * instead of showing mysterious upload failures.
+   */
+  async function flagRevokedSession(userId: string, error: unknown): Promise<void> {
+    if (!(error instanceof AppError) || error.code !== 'SESSION_REVOKED') {
+      return;
+    }
+    const connection = await prisma.storageConnection
+      .findUnique({ where: { userId } })
+      .catch(() => null);
+    if (!connection || connection.status === 'ERROR') {
+      return; // already flagged (or nothing to flag)
+    }
+    await prisma.storageConnection
+      .update({
+        where: { id: connection.id },
+        data: { status: 'ERROR', lastCheckedAt: new Date(), lastError: error.message },
+      })
+      .catch(() => undefined);
+    await audit.record(userId, AuditEventTypes.CONNECTION_SESSION_REVOKED);
+  }
+
   const onFinalFailure: FinalFailureHandler = async (name, payload, error) => {
     if (name === 'chunk-upload') {
       const { fileId, chunkIndex, stagingPath } = payload as {
@@ -158,8 +184,13 @@ export function createStorageWorker({
           fileId,
           name: file.name,
         });
+        await flagRevokedSession(file.ownerId, error);
       }
       return;
+    }
+    if (name === 'messages-delete') {
+      const { userId } = payload as { userId: string };
+      await flagRevokedSession(userId, error);
     }
     logger.error({ err: error, job: name }, 'Job failed permanently');
   };

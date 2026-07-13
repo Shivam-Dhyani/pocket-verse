@@ -15,6 +15,12 @@ function describe(type: string, metadata: Record<string, unknown> | null): strin
       return 'Created your account';
     case 'auth.login':
       return 'Signed in';
+    case 'auth.password_changed':
+      return 'Changed your password (other devices were signed out)';
+    case 'auth.password_reset_requested':
+      return 'Requested a password reset link';
+    case 'auth.password_reset':
+      return 'Reset your password (all devices were signed out)';
     case 'connection.started':
       return 'Started connecting your storage';
     case 'connection.connected':
@@ -23,6 +29,8 @@ function describe(type: string, metadata: Record<string, unknown> | null): strin
       return 'Disconnected your storage';
     case 'connection.health_failed':
       return 'Storage connection check failed';
+    case 'connection.session_revoked':
+      return 'Pocketverse’s session was ended from inside Telegram — reconnect to resume syncing';
     case 'file.uploaded':
       return `Uploaded ${name || 'a file'}`;
     case 'file.upload_failed':

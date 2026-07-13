@@ -61,16 +61,18 @@ The repo contains `render.yaml`, so use a Blueprint deploy:
 1. https://render.com → New → **Blueprint** → connect the GitHub repo.
 2. Render reads `render.yaml` and prompts for the `sync: false` env vars:
 
-   | Var                 | Value                                            |
-   | ------------------- | ------------------------------------------------ |
-   | `DATABASE_URL`      | Neon direct connection string                    |
-   | `JWT_SECRET`        | generated above                                  |
-   | `MASTER_KEYS`       | `k1:<base64 key generated above>`                |
-   | `MASTER_KEY_ACTIVE` | `k1`                                             |
-   | `CORS_ORIGIN`       | your Vercel URL (placeholder now, fix in step 5) |
-   | `TELEGRAM_API_ID`   | from my.telegram.org                             |
-   | `TELEGRAM_API_HASH` | from my.telegram.org                             |
-   | `REDIS_URL`         | Upstash URL, or leave empty                      |
+   | Var                 | Value                                                                       |
+   | ------------------- | --------------------------------------------------------------------------- |
+   | `DATABASE_URL`      | Neon direct connection string                                               |
+   | `JWT_SECRET`        | generated above                                                             |
+   | `MASTER_KEYS`       | `k1:<base64 key generated above>`                                           |
+   | `MASTER_KEY_ACTIVE` | `k1`                                                                        |
+   | `CORS_ORIGIN`       | your Vercel URL (placeholder now, fix in step 5)                            |
+   | `TELEGRAM_API_ID`   | from my.telegram.org                                                        |
+   | `TELEGRAM_API_HASH` | from my.telegram.org                                                        |
+   | `REDIS_URL`         | Upstash URL, or leave empty                                                 |
+   | `RESEND_API_KEY`    | resend.com key for password-reset emails, or leave empty (links are logged) |
+   | `MAIL_FROM`         | verified sender, e.g. `Pocketverse <noreply@yourdomain>`                    |
 
 3. Deploy. First build takes a few minutes; `prisma migrate deploy` creates the
    schema, then `/health` goes green.

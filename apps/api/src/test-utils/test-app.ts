@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Writable } from 'node:stream';
 import { createApp } from '../app.js';
 import type { Env } from '../config/env.js';
+import type { Mailer } from '../lib/mailer.js';
 import { createLogger } from '../lib/logger.js';
 import { createInlineQueue } from '../lib/queue/index.js';
 import { createFakeGateway, type FakeGatewayOptions } from './fake-gateway.js';
@@ -28,12 +29,13 @@ export const TEST_ENV: Env = {
 export interface TestAppOptions {
   gateway?: FakeGatewayOptions;
   env?: Partial<Env>;
+  mailer?: Mailer;
 }
 
 export function createTestApp(options: TestAppOptions | FakeGatewayOptions = {}) {
   // Back-compat: earlier tests pass FakeGatewayOptions directly.
   const normalized: TestAppOptions =
-    'gateway' in options || 'env' in options
+    'gateway' in options || 'env' in options || 'mailer' in options
       ? (options as TestAppOptions)
       : { gateway: options as FakeGatewayOptions };
 
@@ -50,6 +52,6 @@ export function createTestApp(options: TestAppOptions | FakeGatewayOptions = {})
     ...normalized.env,
   };
 
-  const app = createApp({ env, prisma, logger, gateway, queue });
+  const app = createApp({ env, prisma, logger, gateway, queue, mailer: normalized.mailer });
   return { app, prisma, gateway, logger, gatewayCalls: calls, channelStore, queue, env };
 }

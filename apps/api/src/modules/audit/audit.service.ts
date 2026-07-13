@@ -10,6 +10,11 @@ import type { Logger } from 'pino';
 export const AuditEventTypes = {
   AUTH_REGISTER: 'auth.register',
   AUTH_LOGIN: 'auth.login',
+  AUTH_PASSWORD_CHANGED: 'auth.password_changed',
+  AUTH_PASSWORD_RESET_REQUESTED: 'auth.password_reset_requested',
+  AUTH_PASSWORD_RESET: 'auth.password_reset',
+  /** The user ended Pocketverse's session from inside the Telegram app. */
+  CONNECTION_SESSION_REVOKED: 'connection.session_revoked',
   CONNECTION_STARTED: 'connection.started',
   CONNECTION_CONNECTED: 'connection.connected',
   CONNECTION_DISCONNECTED: 'connection.disconnected',

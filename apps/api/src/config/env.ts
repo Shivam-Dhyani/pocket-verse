@@ -25,6 +25,10 @@ const envSchema = z.object({
   // Queue backend: with REDIS_URL jobs run on BullMQ; without it an
   // in-process runner with the same retry policy is used (dev / no-Redis).
   REDIS_URL: z.string().url().optional(),
+  // Outbound email (password resets). Unset → reset links are logged instead
+  // of sent, which keeps local development fully testable.
+  RESEND_API_KEY: z.string().min(1).optional(),
+  MAIL_FROM: z.string().min(3).optional(),
   // Telegram-level chunk size (handoff: 1.5GB default, tune later).
   CHUNK_SIZE_BYTES: z.coerce.number().int().positive().default(1_500_000_000),
   // HTTP upload part size — small enough for free-tier request timeouts.

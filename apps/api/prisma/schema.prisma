@@ -14,6 +14,7 @@ model User {
   createdAt      DateTime           @default(now())
   updatedAt      DateTime           @updatedAt
   refreshTokens  RefreshToken[]
+  resetTokens    PasswordResetToken[]
   connection     StorageConnection?
   auditEvents    AuditEvent[]
   folders        Folder[]
@@ -34,9 +35,11 @@ model StorageConnection {
   userId String           @unique
   status ConnectionStatus
 
-  // Display-only masked phone (e.g. "+91••••••1234"); the full number lives
-  // only inside the encrypted pending blob during login.
-  phoneMasked String
+  // Display-only masked phone (e.g. "+91••••••1234") plus the full number,
+  // envelope-encrypted with the connection data key — revealed only via an
+  // authenticated, audited endpoint.
+  phoneMasked    String
+  encryptedPhone String?
 
   // Envelope encryption: per-connection data key wrapped by the master keyring
   // (AAD-bound to the user). The session string is encrypted with the data key.
@@ -158,6 +161,20 @@ model UploadSession {
   updatedAt DateTime @updatedAt
 
   @@index([ownerId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  // Only a SHA-256 hash of the token is stored; the raw token exists solely
+  // inside the reset link sent to the account's email.
+  tokenHash String    @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model RefreshToken {

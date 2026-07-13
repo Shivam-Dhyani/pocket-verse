@@ -123,4 +123,10 @@ export const api = {
   refresh: tryRefresh,
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
   me: () => request<{ user: UserDto }>('/api/auth/me', { auth: true }),
+  changePassword: (input: { currentPassword: string; newPassword: string }) =>
+    request<void>('/api/auth/change-password', { method: 'POST', auth: true, body: input }),
+  forgotPassword: (email: string) =>
+    request<void>('/api/auth/forgot-password', { method: 'POST', body: { email } }),
+  resetPassword: (input: { token: string; password: string }) =>
+    request<void>('/api/auth/reset-password', { method: 'POST', body: input }),
 };

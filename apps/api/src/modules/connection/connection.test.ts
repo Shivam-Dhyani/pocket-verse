@@ -2,6 +2,7 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import type { Express } from 'express';
 import { decryptWithDataKey, loadMasterKeyring } from '../../lib/crypto/index.js';
+import { mapTelegramError } from '../../lib/telegram/errors.js';
 import { AppError } from '../../middleware/errors.js';
 import {
   FAKE_CHANNEL,
@@ -262,8 +263,9 @@ describe('connection flow', () => {
     expect(failed.status).toBe(200);
     expect(failed.body.connection.status).toBe('error');
     expect(failed.body.connection.lastError).toContain('Reconnect');
+    // A revoked session records its own dedicated event, not a generic failure.
     expect(
-      prisma._state.auditEvents.some((event) => event.type === 'connection.health_failed'),
+      prisma._state.auditEvents.some((event) => event.type === 'connection.session_revoked'),
     ).toBe(true);
 
     failing = false;
@@ -373,5 +375,50 @@ describe('maskPhone', () => {
 
   it('handles short numbers without leaking digits', () => {
     expect(maskPhone('+123456')).toBe('+1•••56');
+  });
+});
+
+describe('phone reveal and revoked sessions', () => {
+  it('reveals the full connected phone number on request', async () => {
+    const { app } = createTestApp();
+    const api = authed(app, await registerUser(app));
+    await api.post('/api/connection/start', { phone: PHONE });
+    await api.post('/api/connection/verify-code', { code: '12345' });
+
+    const res = await api.get('/api/connection/phone');
+    expect(res.status).toBe(200);
+    expect(res.body.phone).toBe(PHONE);
+  });
+
+  it('never includes the full phone in the regular status DTO', async () => {
+    const { app } = createTestApp();
+    const api = authed(app, await registerUser(app));
+    await api.post('/api/connection/start', { phone: PHONE });
+    await api.post('/api/connection/verify-code', { code: '12345' });
+
+    const status = await api.get('/api/connection');
+    expect(JSON.stringify(status.body)).not.toContain(PHONE);
+  });
+
+  it('marks the connection revoked when Telegram reports the session was ended', async () => {
+    const { app, prisma } = createTestApp({
+      gateway: {
+        checkHealth: async () => {
+          // What the real gateway produces for AUTH_KEY_UNREGISTERED.
+          throw mapTelegramError({ errorMessage: 'AUTH_KEY_UNREGISTERED' });
+        },
+      },
+    });
+    const api = authed(app, await registerUser(app));
+    await api.post('/api/connection/start', { phone: PHONE });
+    await api.post('/api/connection/verify-code', { code: '12345' });
+
+    const res = await api.post('/api/connection/check');
+    expect(res.status).toBe(200);
+    expect(res.body.connection.status).toBe('error');
+    expect(res.body.connection.lastError).toContain('ended from inside Telegram');
+    expect(
+      prisma._state.auditEvents.some((event) => event.type === 'connection.session_revoked'),
+    ).toBe(true);
   });
 });

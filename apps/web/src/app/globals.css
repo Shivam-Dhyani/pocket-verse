@@ -1348,3 +1348,117 @@ button {
   font-size: var(--pv-text-sm);
   color: var(--pv-text-muted);
 }
+
+/* Prominent connection-problem banner on the drive (e.g. session ended
+   from inside Telegram): explains what happened and offers the fix. */
+.pv-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--pv-s4);
+  flex-wrap: wrap;
+  border: 1px solid var(--pv-danger);
+  background: var(--pv-danger-bg);
+  color: var(--pv-text);
+  border-radius: var(--pv-radius);
+  padding: var(--pv-s4);
+  margin-bottom: var(--pv-s4);
+  font-size: var(--pv-text-sm);
+  line-height: 1.55;
+}
+
+.pv-banner > div {
+  flex: 1;
+  min-width: 240px;
+}
+
+.pv-banner button {
+  white-space: nowrap;
+}
+
+/* Header nav: the icon for the page you're on. */
+.pv-nav-active {
+  color: var(--pv-accent);
+  background: color-mix(in srgb, var(--pv-accent) 12%, transparent);
+}
+
+/* ---------- small screens (phones + small tablets) ---------- */
+@media (max-width: 760px) {
+  .pv-app {
+    padding: var(--pv-s3) var(--pv-s3) var(--pv-s7);
+  }
+
+  /* Header: brand + nav on the first row, search drops to its own full row. */
+  .pv-appbar {
+    gap: var(--pv-s2);
+  }
+
+  .pv-search {
+    order: 10;
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .pv-stats-chip {
+    display: none; /* the About/Security pages carry this info; keep the bar clean */
+  }
+
+  .pv-hero {
+    padding: 10vh 20px 40px;
+  }
+
+  .pv-shell {
+    padding: 6vh 16px 40px;
+  }
+
+  .pv-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  }
+
+  .pv-drive-toolbar {
+    gap: var(--pv-s2);
+  }
+
+  .pv-breadcrumb {
+    flex-basis: 100%;
+  }
+
+  /* Row actions are always visible on touch (no hover to discover them). */
+  .pv-row-actions {
+    opacity: 1 !important;
+  }
+
+  .pv-page {
+    padding: 0 var(--pv-s1);
+  }
+
+  .pv-busy-pill {
+    max-width: calc(100vw - 32px);
+    text-align: center;
+  }
+
+  .pv-tree {
+    max-height: 45vh;
+  }
+
+  .pv-modal {
+    max-height: 92vh;
+  }
+}
+
+/* Comfortable touch targets on coarse pointers (phones/tablets). */
+@media (pointer: coarse) {
+  .pv-iconbtn {
+    min-width: 38px;
+    min-height: 38px;
+  }
+
+  .pv-tree-row {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+
+  .pv-row {
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+}

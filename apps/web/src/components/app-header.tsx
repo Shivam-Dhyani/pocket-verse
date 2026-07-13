@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { StatsDto } from '@pocketverse/shared';
@@ -14,10 +14,13 @@ import { useAuthStore } from '@/stores/auth';
 
 export function AppHeader({ children }: { children?: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const dialogs = useDialogs();
   const clearSession = useAuthStore((state) => state.clearSession);
   const accessToken = useAuthStore((state) => state.accessToken);
   const [signingOut, setSigningOut] = useState(false);
+  // The nav icon for the page you're on gets the active treatment.
+  const navClass = (href: string) => `pv-iconbtn${pathname === href ? ' pv-nav-active' : ''}`;
 
   const stats = useQuery({
     queryKey: ['stats'],
@@ -40,13 +43,28 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         </span>
       )}
       <nav>
-        <Link href="/about" className="pv-iconbtn" title="About Pocketverse" aria-label="About">
+        <Link
+          href="/about"
+          className={navClass('/about')}
+          title="About Pocketverse"
+          aria-label="About"
+        >
           <InfoIcon />
         </Link>
-        <Link href="/security" className="pv-iconbtn" title="Security" aria-label="Security">
+        <Link
+          href="/security"
+          className={navClass('/security')}
+          title="Security"
+          aria-label="Security"
+        >
           <ShieldIcon />
         </Link>
-        <Link href="/activity" className="pv-iconbtn" title="Activity" aria-label="Activity">
+        <Link
+          href="/activity"
+          className={navClass('/activity')}
+          title="Activity"
+          aria-label="Activity"
+        >
           <ActivityIcon />
         </Link>
         <ThemeToggle />
@@ -60,9 +78,12 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
           onClick={() => {
             void dialogs
               .confirm({
-                title: 'Sign out',
-                message: 'Sign out of Pocketverse?',
+                title: 'Sign out of Pocketverse?',
+                message:
+                  'Your files stay safe and synced — signing out only ends this session on this device. Sign back in anytime to pick up where you left off.',
                 confirmLabel: 'Sign out',
+                cancelLabel: 'Stay signed in',
+                danger: true,
               })
               .then((ok) => {
                 if (!ok) {

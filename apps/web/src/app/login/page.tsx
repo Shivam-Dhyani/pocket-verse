@@ -79,6 +79,9 @@ export default function LoginPage() {
         </form>
 
         <p className="pv-footnote">
+          <Link href="/forgot-password">Forgot your password?</Link>
+        </p>
+        <p className="pv-footnote">
           New here? <Link href="/register">Create an account</Link>
         </p>
       </div>

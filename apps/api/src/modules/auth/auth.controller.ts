@@ -1,5 +1,11 @@
 import type { CookieOptions, Request, Response } from 'express';
-import type { LoginInput, RegisterInput } from '@pocketverse/shared';
+import type {
+  ChangePasswordInput,
+  ForgotPasswordInput,
+  LoginInput,
+  RegisterInput,
+  ResetPasswordInput,
+} from '@pocketverse/shared';
 import type { AuthService, IssuedTokens } from './auth.service.js';
 
 export const REFRESH_COOKIE = 'pv_refresh';
@@ -77,6 +83,28 @@ export function createAuthController({ service, secureCookies }: AuthControllerD
       // requireAuth guarantees req.user.
       const user = await service.getUser(req.user!.id);
       res.json({ user });
+    },
+
+    async changePassword(req: Request, res: Response): Promise<void> {
+      const { currentPassword, newPassword } = req.body as ChangePasswordInput;
+      // The cookie rides along (this route lives under /api/auth) — keep this
+      // session alive while every other one is signed out.
+      const current = (req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE];
+      await service.changePassword(req.user!.id, currentPassword, newPassword, current);
+      res.status(204).end();
+    },
+
+    async forgotPassword(req: Request, res: Response): Promise<void> {
+      const { email } = req.body as ForgotPasswordInput;
+      await service.requestPasswordReset(email);
+      // Identical response whether or not the account exists.
+      res.status(204).end();
+    },
+
+    async resetPassword(req: Request, res: Response): Promise<void> {
+      const { token, password } = req.body as ResetPasswordInput;
+      await service.resetPassword(token, password);
+      res.status(204).end();
     },
   };
 }

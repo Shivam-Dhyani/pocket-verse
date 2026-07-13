@@ -15,6 +15,7 @@ export function createConnectionRouter(service: ConnectionService, jwt: JwtHelpe
   router.post('/verify-code', validateBody(verifyCodeSchema), controller.verifyCode);
   router.post('/verify-password', validateBody(verifyPasswordSchema), controller.verifyPassword);
   router.get('/', controller.status);
+  router.get('/phone', controller.revealPhone);
   router.post('/check', controller.check);
   router.delete('/', controller.disconnect);
 

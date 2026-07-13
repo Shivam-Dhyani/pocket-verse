@@ -201,3 +201,102 @@ describe('hardening basics', () => {
     expect(res.get('x-powered-by')).toBeUndefined();
   });
 });
+
+describe('password change and reset', () => {
+  async function registered() {
+    const ctx = createTestApp();
+    const res = await request(ctx.app)
+      .post('/api/auth/register')
+      .send({ email: EMAIL, password: PASSWORD });
+    return { ...ctx, token: res.body.accessToken as string, cookie: extractRefreshCookie(res) };
+  }
+
+  it('changes the password and signs out other sessions only', async () => {
+    const { app, token, cookie, prisma } = await registered();
+    // A second session (another device).
+    const other = await request(app)
+      .post('/api/auth/login')
+      .send({ email: EMAIL, password: PASSWORD });
+    const otherCookie = extractRefreshCookie(other);
+
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .set('Cookie', cookie)
+      .send({ currentPassword: PASSWORD, newPassword: 'a-brand-new-password!' });
+    expect(res.status).toBe(204);
+
+    // Old password no longer works; new one does.
+    const oldLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ email: EMAIL, password: PASSWORD });
+    expect(oldLogin.status).toBe(401);
+    const newLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ email: EMAIL, password: 'a-brand-new-password!' });
+    expect(newLogin.status).toBe(200);
+
+    // The changing session survives (checked first: using a revoked cookie
+    // deliberately trips reuse detection, which then kills every session).
+    expect((await request(app).post('/api/auth/refresh').set('Cookie', cookie)).status).toBe(200);
+    expect((await request(app).post('/api/auth/refresh').set('Cookie', otherCookie)).status).toBe(
+      401,
+    );
+    expect(prisma._state.auditEvents.some((event) => event.type === 'auth.password_changed')).toBe(
+      true,
+    );
+  });
+
+  it('rejects a wrong current password', async () => {
+    const { app, token } = await registered();
+    const res = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ currentPassword: 'not-my-password', newPassword: 'a-brand-new-password!' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WRONG_PASSWORD');
+  });
+
+  it('resets the password via an emailed single-use token', async () => {
+    const sent: string[] = [];
+    const ctx = createTestApp({
+      mailer: {
+        sendPasswordReset: async (_email, url) => {
+          sent.push(url);
+        },
+      },
+    });
+    await request(ctx.app).post('/api/auth/register').send({ email: EMAIL, password: PASSWORD });
+
+    // Unknown email: same response, no email sent.
+    const unknown = await request(ctx.app)
+      .post('/api/auth/forgot-password')
+      .send({ email: 'nobody@example.com' });
+    expect(unknown.status).toBe(204);
+    expect(sent).toHaveLength(0);
+
+    const res = await request(ctx.app).post('/api/auth/forgot-password').send({ email: EMAIL });
+    expect(res.status).toBe(204);
+    expect(sent).toHaveLength(1);
+    const token = new URL(sent[0]!).searchParams.get('token')!;
+
+    const reset = await request(ctx.app)
+      .post('/api/auth/reset-password')
+      .send({ token, password: 'password-after-reset!' });
+    expect(reset.status).toBe(204);
+
+    // Token is single-use.
+    const replay = await request(ctx.app)
+      .post('/api/auth/reset-password')
+      .send({ token, password: 'yet-another-password!' });
+    expect(replay.status).toBe(400);
+
+    const login = await request(ctx.app)
+      .post('/api/auth/login')
+      .send({ email: EMAIL, password: 'password-after-reset!' });
+    expect(login.status).toBe(200);
+    expect(
+      ctx.prisma._state.auditEvents.some((event) => event.type === 'auth.password_reset'),
+    ).toBe(true);
+  });
+});

@@ -5,6 +5,7 @@ import type { UserDto } from '@pocketverse/shared';
 import { REFRESH_TOKEN_TTL_DAYS } from '../../config/env.js';
 import type { JwtHelpers } from '../../lib/jwt.js';
 import { AppError } from '../../middleware/errors.js';
+import type { Mailer } from '../../lib/mailer.js';
 import { AuditEventTypes, type AuditService } from '../audit/audit.service.js';
 
 const ARGON2_OPTIONS: argon2.Options = {
@@ -27,7 +28,13 @@ export interface AuthServiceDeps {
   prisma: PrismaClient;
   jwt: JwtHelpers;
   audit?: AuditService;
+  /** Sends password-reset links; absent in tests that don't exercise it. */
+  mailer?: Mailer;
+  /** Web origin used to build reset links (e.g. https://app.example.com). */
+  webOrigin?: string;
 }
+
+const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 
 const invalidCredentials = () =>
   new AppError(401, 'INVALID_CREDENTIALS', 'Incorrect email or password');
@@ -35,7 +42,7 @@ const invalidCredentials = () =>
 const invalidRefresh = () =>
   new AppError(401, 'UNAUTHENTICATED', 'Session expired — sign in again');
 
-export function createAuthService({ prisma, jwt, audit }: AuthServiceDeps) {
+export function createAuthService({ prisma, jwt, audit, mailer, webOrigin }: AuthServiceDeps) {
   async function issueTokens(user: User): Promise<AuthResult> {
     const raw = randomBytes(48).toString('base64url');
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -120,6 +127,89 @@ export function createAuthService({ prisma, jwt, audit }: AuthServiceDeps) {
         throw invalidRefresh();
       }
       return toUserDto(user);
+    },
+
+    /**
+     * Change the password for a signed-in user. Every OTHER session is signed
+     * out (their refresh tokens are revoked) — the session that made the
+     * change keeps its refresh token so the user isn't logged out mid-action.
+     */
+    async changePassword(
+      userId: string,
+      currentPassword: string,
+      newPassword: string,
+      keepRefreshToken?: string,
+    ): Promise<void> {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        throw invalidRefresh();
+      }
+      const valid = await argon2.verify(user.passwordHash, currentPassword);
+      if (!valid) {
+        throw new AppError(400, 'WRONG_PASSWORD', 'Your current password is incorrect.');
+      }
+      const passwordHash = await argon2.hash(newPassword, ARGON2_OPTIONS);
+      await prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+      await prisma.refreshToken.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+          ...(keepRefreshToken ? { tokenHash: { not: hashToken(keepRefreshToken) } } : {}),
+        },
+        data: { revokedAt: new Date() },
+      });
+      await audit?.record(userId, AuditEventTypes.AUTH_PASSWORD_CHANGED);
+    },
+
+    /**
+     * Start a password reset. Always resolves the same way whether or not the
+     * email exists (no account probing); when it does, a single-use 30-minute
+     * token is issued and the link is emailed (or logged when email isn't
+     * configured).
+     */
+    async requestPasswordReset(email: string): Promise<void> {
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        return;
+      }
+      const raw = randomBytes(32).toString('base64url');
+      await prisma.passwordResetToken.create({
+        data: {
+          tokenHash: hashToken(raw),
+          userId: user.id,
+          expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS),
+        },
+      });
+      const base = (webOrigin ?? 'http://localhost:3000').replace(/\/$/, '');
+      await mailer?.sendPasswordReset(user.email, `${base}/reset-password?token=${raw}`);
+      await audit?.record(user.id, AuditEventTypes.AUTH_PASSWORD_RESET_REQUESTED);
+    },
+
+    /** Complete a reset: consume the token, set the password, end every session. */
+    async resetPassword(rawToken: string, newPassword: string): Promise<void> {
+      const record = await prisma.passwordResetToken.findUnique({
+        where: { tokenHash: hashToken(rawToken) },
+      });
+      if (!record || record.usedAt || record.expiresAt.getTime() <= Date.now()) {
+        throw new AppError(
+          400,
+          'INVALID_RESET_TOKEN',
+          'This reset link is invalid or has expired. Request a new one.',
+        );
+      }
+      const passwordHash = await argon2.hash(newPassword, ARGON2_OPTIONS);
+      await prisma.user.update({ where: { id: record.userId }, data: { passwordHash } });
+      await prisma.passwordResetToken.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      });
+      // A reset usually means the old password (and any stolen session) can't
+      // be trusted — sign out everywhere.
+      await prisma.refreshToken.updateMany({
+        where: { userId: record.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await audit?.record(record.userId, AuditEventTypes.AUTH_PASSWORD_RESET);
     },
   };
 }

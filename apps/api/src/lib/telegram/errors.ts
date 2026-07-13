@@ -70,10 +70,11 @@ export function mapTelegramError(error: unknown): AppError {
       );
     case 'SESSION_REVOKED':
     case 'AUTH_KEY_UNREGISTERED':
+    case 'USER_DEACTIVATED':
       return new AppError(
         401,
         'SESSION_REVOKED',
-        'Access was revoked from the storage side. Reconnect your account to continue.',
+        "Pocketverse's session was ended from inside Telegram. Reconnect your account to continue.",
       );
     default:
       return new AppError(

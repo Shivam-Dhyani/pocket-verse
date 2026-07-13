@@ -34,7 +34,24 @@ export const authResponseSchema = z.object({
   accessToken: z.string(),
 });
 
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Enter your current password').max(128),
+  newPassword: passwordSchema,
+});
+
+export const forgotPasswordSchema = z.object({
+  email: emailSchema,
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(20).max(200),
+  password: passwordSchema,
+});
+
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
 export type UserDto = z.infer<typeof userDtoSchema>;
 export type AuthResponse = z.infer<typeof authResponseSchema>;

@@ -41,3 +41,9 @@ services:
       # in-process, which is fine for a single free-tier instance.
       - key: REDIS_URL
         sync: false
+      # Optional: password-reset emails via Resend. Leave unset to log the
+      # reset links on the server instead of sending them.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false

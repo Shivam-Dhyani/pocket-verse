@@ -162,7 +162,12 @@ export function createConnectionService({
         });
         const updated = await prisma.storageConnection.update({
           where: { id: created.id },
-          data: { encryptedPending: pendingFor(created) },
+          data: {
+            encryptedPending: pendingFor(created),
+            // Full number, encrypted like the session — shown only through the
+            // authenticated reveal endpoint, never in a regular DTO.
+            encryptedPhone: encryptWithDataKey(phone, created.wrappedDataKey, keyring, aad(userId)),
+          },
         });
 
         await audit.record(userId, AuditEventTypes.CONNECTION_STARTED, { phoneMasked });
@@ -223,6 +228,25 @@ export function createConnectionService({
       return connection ? toDto(connection) : emptyDto();
     },
 
+    /** The full connected phone number — only via this authenticated call. */
+    async revealPhone(userId: string): Promise<{ phone: string }> {
+      const connection = await prisma.storageConnection.findUnique({ where: { userId } });
+      if (!connection?.encryptedPhone) {
+        throw new AppError(
+          404,
+          'PHONE_UNAVAILABLE',
+          'The full number is not stored for this connection. Reconnect to enable this.',
+        );
+      }
+      const phone = decryptWithDataKey(
+        connection.encryptedPhone,
+        connection.wrappedDataKey,
+        keyring,
+        aad(userId),
+      ).toString('utf8');
+      return { phone };
+    },
+
     async check(userId: string): Promise<ConnectionDto> {
       return lock(userId, async () => {
         const connection = await prisma.storageConnection.findUnique({ where: { userId } });
@@ -248,13 +272,21 @@ export function createConnectionService({
           });
           return toDto(updated);
         } catch (error) {
+          const revoked = error instanceof AppError && error.code === 'SESSION_REVOKED';
           const message =
             error instanceof AppError ? error.message : 'The storage connection is not responding.';
           const updated = await prisma.storageConnection.update({
             where: { id: connection.id },
             data: { status: 'ERROR', lastCheckedAt: new Date(), lastError: message },
           });
-          await audit.record(userId, AuditEventTypes.CONNECTION_HEALTH_FAILED);
+          // Someone ending the session from inside Telegram is its own event —
+          // the user deserves to see exactly that in their activity log.
+          await audit.record(
+            userId,
+            revoked
+              ? AuditEventTypes.CONNECTION_SESSION_REVOKED
+              : AuditEventTypes.CONNECTION_HEALTH_FAILED,
+          );
           return toDto(updated);
         }
       });

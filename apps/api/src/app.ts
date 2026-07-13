@@ -7,6 +7,7 @@ import type { Logger } from 'pino';
 import type { Env } from './config/env.js';
 import { loadMasterKeyring } from './lib/crypto/index.js';
 import { createJwtHelpers } from './lib/jwt.js';
+import { createMailer, type Mailer } from './lib/mailer.js';
 import { createKeyedMutex } from './lib/mutex.js';
 import { createBullMqQueue, createInlineQueue, type JobQueue } from './lib/queue/index.js';
 import type { TelegramGateway } from './lib/telegram/gateway.js';
@@ -32,9 +33,17 @@ export interface AppDeps {
   /** Test seams — production builds these from env. */
   gateway?: TelegramGateway;
   queue?: JobQueue;
+  mailer?: Mailer;
 }
 
-export function createApp({ env, prisma, logger, gateway, queue }: AppDeps): express.Express {
+export function createApp({
+  env,
+  prisma,
+  logger,
+  gateway,
+  queue,
+  mailer,
+}: AppDeps): express.Express {
   const app = express();
   const jwt = createJwtHelpers(env.JWT_SECRET);
   const keyring = loadMasterKeyring(env);
@@ -82,7 +91,14 @@ export function createApp({ env, prisma, logger, gateway, queue }: AppDeps): exp
     res.json({ status: 'ok' });
   });
 
-  const authService = createAuthService({ prisma, jwt, audit });
+  const authService = createAuthService({
+    prisma,
+    jwt,
+    audit,
+    mailer:
+      mailer ?? createMailer({ resendApiKey: env.RESEND_API_KEY, mailFrom: env.MAIL_FROM }, logger),
+    webOrigin: env.CORS_ORIGIN,
+  });
   app.use(
     '/api/auth',
     limiters.auth,

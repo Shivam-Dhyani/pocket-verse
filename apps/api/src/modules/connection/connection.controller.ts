@@ -27,6 +27,10 @@ export function createConnectionController(service: ConnectionService) {
       res.json({ connection: await service.getStatus(req.user!.id) });
     },
 
+    async revealPhone(req: Request, res: Response): Promise<void> {
+      res.json(await service.revealPhone(req.user!.id));
+    },
+
     async check(req: Request, res: Response): Promise<void> {
       res.json({ connection: await service.check(req.user!.id) });
     },

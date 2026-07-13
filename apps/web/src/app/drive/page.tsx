@@ -85,13 +85,18 @@ export default function DrivePage() {
     queryFn: connectionApi.status,
     retry: false,
     enabled: me.isSuccess,
+    refetchInterval: 30_000,
   });
   const connected = connection.data?.connection.status === 'connected';
+  // e.g. the user ended Pocketverse's session from inside Telegram: the drive
+  // listing still works (it's our metadata), but syncing is broken until they
+  // reconnect — show the drive with an explanatory banner, not a dead end.
+  const broken = connection.data?.connection.status === 'error';
 
   const drive = useQuery({
     queryKey: ['drive', folderId],
     queryFn: () => driveApi.list(folderId),
-    enabled: me.isSuccess && connected,
+    enabled: me.isSuccess && (connected || broken),
     refetchInterval: (query) =>
       query.state.data?.files.some((file) => file.status === 'uploading') || uploadCount > 0
         ? 2500
@@ -353,7 +358,7 @@ export default function DrivePage() {
     <div className="pv-app">
       <AppHeader>{connected && <SearchBox onOpen={(file) => setPreview(file)} />}</AppHeader>
 
-      {!connected ? (
+      {!connected && !broken ? (
         <div className="pv-card" style={{ textAlign: 'center', marginTop: 'var(--pv-s6)' }}>
           <UploadPortal width={40} height={40} style={{ color: 'var(--pv-accent)' }} />
           <h1 style={{ marginTop: 'var(--pv-s3)' }}>Connect your storage</h1>
@@ -366,6 +371,21 @@ export default function DrivePage() {
         </div>
       ) : (
         <div {...getRootProps({ className: `pv-dropzone${isDragActive ? ' active' : ''}` })}>
+          {broken && (
+            <div className="pv-banner" role="alert">
+              <div>
+                <strong>Pocketverse lost access to your Telegram account.</strong>{' '}
+                {connection.data?.connection.lastError ??
+                  'The connection stopped responding — this usually means the session was ended from inside Telegram.'}{' '}
+                Your files are safe; uploads, downloads, and syncing are paused until you reconnect.
+              </div>
+              <Link href="/connect">
+                <button className="pv-button" type="button">
+                  Reconnect
+                </button>
+              </Link>
+            </div>
+          )}
           <input {...getInputProps()} />
 
           {isDragActive && (

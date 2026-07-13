@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { AccountSecurity } from '@/components/account-security';
 import { AppHeader } from '@/components/app-header';
 import { ConnectionManager } from '@/components/connection-manager';
 import { LockIcon, ShieldIcon } from '@/components/icons';
@@ -17,6 +18,7 @@ export default function SecurityPage() {
         </p>
 
         <ConnectionManager />
+        <AccountSecurity />
 
         <div className="pv-accordion">
           <details open>

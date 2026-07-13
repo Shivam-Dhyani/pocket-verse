@@ -32,4 +32,5 @@ export const connectionApi = {
       auth: true,
     }),
   disconnect: () => request<void>('/api/connection', { method: 'DELETE', auth: true }),
+  revealPhone: () => request<{ phone: string }>('/api/connection/phone', { auth: true }),
 };
