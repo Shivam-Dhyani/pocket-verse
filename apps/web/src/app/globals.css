@@ -1259,3 +1259,86 @@ button {
     display: none;
   }
 }
+
+/* Folder tree picker (move dialog): compact rows, explicit selection. */
+.pv-tree {
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius);
+  background: var(--pv-surface-raised);
+  max-height: 300px;
+  overflow-y: auto;
+  padding: var(--pv-s2);
+}
+
+.pv-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: var(--pv-radius-sm);
+  font-size: var(--pv-text-sm);
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  transition:
+    background var(--pv-fast),
+    border-color var(--pv-fast);
+}
+
+.pv-tree-row:hover {
+  background: var(--pv-surface);
+}
+
+.pv-tree-row.selected {
+  background: color-mix(in srgb, var(--pv-accent) 14%, transparent);
+  border-color: var(--pv-accent);
+}
+
+.pv-tree-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--pv-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: transform var(--pv-fast);
+}
+
+.pv-tree-toggle:hover {
+  color: var(--pv-text);
+}
+
+.pv-tree-toggle.open {
+  transform: rotate(90deg);
+}
+
+.pv-tree-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-tree-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--pv-text-muted);
+  border: 1px solid var(--pv-border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.pv-tree-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: var(--pv-text-sm);
+  color: var(--pv-text-muted);
+}

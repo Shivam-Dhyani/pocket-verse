@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { FileDto, FolderDto } from '@pocketverse/shared';
 import { driveApi } from '@/lib/files';
-import { FolderIcon } from '@/components/icons';
+import { ChevronRight, FolderIcon, OrbitLogo } from '@/components/icons';
 import { Modal } from '@/components/ui';
 
 /**
- * Simple folder picker: walk into subfolders, then "Move here". Reuses the
- * drive listing endpoint so it always mirrors the real tree.
+ * Folder picker as an expandable tree (the Drive pattern): the chevron
+ * expands a folder to reveal its subfolders, clicking a row selects it as the
+ * destination — selection and navigation are separate, so any nested folder
+ * can be chosen without losing your place.
  */
 export function MoveDialog({
   file,
@@ -20,93 +22,177 @@ export function MoveDialog({
   onClose: () => void;
   onMoved: () => void;
 }) {
-  const [folderId, setFolderId] = useState<string | null>(null);
-  const [trail, setTrail] = useState<FolderDto[]>([]);
+  // null = "My universe" (root). Preselect the file's current home so the
+  // dialog opens showing where the file lives today.
+  const [selectedId, setSelectedId] = useState<string | null>(file.folderId);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const listing = useQuery({
-    queryKey: ['drive', folderId, 'move'],
-    queryFn: () => driveApi.list(folderId),
-  });
+  const isCurrent = selectedId === file.folderId;
 
-  async function moveHere() {
+  async function move() {
     setBusy(true);
+    setError(null);
     try {
-      await driveApi.updateFile(file.id, { folderId });
+      await driveApi.updateFile(file.id, { folderId: selectedId });
       onMoved();
       onClose();
-    } finally {
+    } catch {
+      setError("Couldn't move the file. Please try again.");
       setBusy(false);
     }
   }
 
   return (
     <Modal title={`Move “${file.name}”`} onClose={onClose}>
-      <nav className="pv-breadcrumb" style={{ marginBottom: 'var(--pv-s3)' }}>
-        <button
-          type="button"
-          className={folderId === null ? 'current' : ''}
-          onClick={() => {
-            setFolderId(null);
-            setTrail([]);
-          }}
-        >
-          My universe
-        </button>
-        {trail.map((folder, index) => (
-          <span key={folder.id}>
-            {' / '}
-            <button
-              type="button"
-              className={folder.id === folderId ? 'current' : ''}
-              onClick={() => {
-                setFolderId(folder.id);
-                setTrail(trail.slice(0, index + 1));
-              }}
-            >
-              {folder.name}
-            </button>
-          </span>
-        ))}
-      </nav>
+      <p className="pv-sub" style={{ marginTop: 0 }}>
+        Pick a destination — use the arrows to open folders.
+      </p>
 
-      <ul className="pv-list" style={{ minHeight: 120 }}>
-        {listing.data?.folders.map((folder) => (
-          <li key={folder.id} className="pv-row">
-            <button
-              type="button"
-              className="pv-row-name"
-              style={{ display: 'flex', alignItems: 'center', gap: 'var(--pv-s2)' }}
-              onClick={() => {
-                setFolderId(folder.id);
-                setTrail([...trail, folder]);
-              }}
-            >
-              <FolderIcon width={16} height={16} /> {folder.name}
-            </button>
-          </li>
-        ))}
-        {listing.data && listing.data.folders.length === 0 && (
-          <li className="pv-footnote" style={{ padding: 'var(--pv-s4)' }}>
-            No subfolders here.
-          </li>
-        )}
-      </ul>
+      {error && (
+        <div className="pv-error" role="alert">
+          {error}
+        </div>
+      )}
+
+      <div className="pv-tree" role="tree">
+        {/* Root ("My universe") is a selectable row like any other. */}
+        <div
+          role="treeitem"
+          aria-selected={selectedId === null}
+          className={`pv-tree-row${selectedId === null ? ' selected' : ''}`}
+          onClick={() => setSelectedId(null)}
+        >
+          <span className="pv-tree-toggle" aria-hidden="true" />
+          <OrbitLogo width={15} height={15} />
+          <span className="pv-tree-name">My universe</span>
+          {file.folderId === null && <span className="pv-tree-badge">current</span>}
+        </div>
+        <FolderChildren
+          parentId={null}
+          depth={1}
+          selectedId={selectedId}
+          currentId={file.folderId}
+          onSelect={setSelectedId}
+        />
+      </div>
 
       <div style={{ display: 'flex', gap: 'var(--pv-s2)', marginTop: 'var(--pv-s4)' }}>
+        <button className="pv-button pv-button--ghost" type="button" onClick={onClose}>
+          Cancel
+        </button>
         <button
-          className="pv-button pv-button--block"
+          className="pv-button"
           type="button"
-          disabled={busy}
-          onClick={moveHere}
+          style={{ flex: 1 }}
+          disabled={busy || isCurrent}
+          onClick={() => void move()}
         >
-          {busy
-            ? 'Moving…'
-            : folderId
-              ? `Move to ${trail[trail.length - 1]?.name}`
-              : 'Move to My universe'}
+          {busy ? 'Moving…' : isCurrent ? 'Already in this folder' : 'Move here'}
         </button>
       </div>
     </Modal>
+  );
+}
+
+function FolderChildren({
+  parentId,
+  depth,
+  selectedId,
+  currentId,
+  onSelect,
+}: {
+  parentId: string | null;
+  depth: number;
+  selectedId: string | null;
+  currentId: string | null;
+  onSelect: (id: string | null) => void;
+}) {
+  const listing = useQuery({
+    queryKey: ['move-tree', parentId],
+    queryFn: () => driveApi.list(parentId),
+  });
+
+  if (listing.isPending) {
+    return (
+      <div className="pv-tree-note" style={{ paddingLeft: depth * 20 + 8 }}>
+        <span className="pv-spinner" style={{ width: 12, height: 12 }} /> Loading…
+      </div>
+    );
+  }
+  const folders = listing.data?.folders ?? [];
+  if (folders.length === 0 && depth > 1) {
+    return (
+      <div className="pv-tree-note" style={{ paddingLeft: depth * 20 + 8 }}>
+        No folders inside
+      </div>
+    );
+  }
+  return (
+    <>
+      {folders.map((folder) => (
+        <FolderNode
+          key={folder.id}
+          folder={folder}
+          depth={depth}
+          selectedId={selectedId}
+          currentId={currentId}
+          onSelect={onSelect}
+        />
+      ))}
+    </>
+  );
+}
+
+function FolderNode({
+  folder,
+  depth,
+  selectedId,
+  currentId,
+  onSelect,
+}: {
+  folder: FolderDto;
+  depth: number;
+  selectedId: string | null;
+  currentId: string | null;
+  onSelect: (id: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = selectedId === folder.id;
+  return (
+    <>
+      <div
+        role="treeitem"
+        aria-selected={selected}
+        aria-expanded={open}
+        className={`pv-tree-row${selected ? ' selected' : ''}`}
+        style={{ paddingLeft: (depth - 1) * 20 + 8 }}
+        onClick={() => onSelect(folder.id)}
+      >
+        <button
+          type="button"
+          className={`pv-tree-toggle${open ? ' open' : ''}`}
+          aria-label={open ? `Collapse ${folder.name}` : `Expand ${folder.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            setOpen((value) => !value);
+          }}
+        >
+          <ChevronRight width={13} height={13} />
+        </button>
+        <FolderIcon width={15} height={15} />
+        <span className="pv-tree-name">{folder.name}</span>
+        {currentId === folder.id && <span className="pv-tree-badge">current</span>}
+      </div>
+      {open && (
+        <FolderChildren
+          parentId={folder.id}
+          depth={depth + 1}
+          selectedId={selectedId}
+          currentId={currentId}
+          onSelect={onSelect}
+        />
+      )}
+    </>
   );
 }
