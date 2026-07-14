@@ -16,6 +16,7 @@ import {
 } from '@/lib/limits';
 import {
   activeUploadFileIds,
+  recordCreatedFolders,
   registerUploads,
   runUploads,
   useUploadsStore,
@@ -216,7 +217,8 @@ export default function DrivePage() {
       // and caching each path prefix as a promise. Concurrent siblings share the
       // parent's promise, so shared ancestors are never created twice — the
       // ensure-path call is find-then-create (not atomic), so this is what keeps
-      // it race-free even though uploads run concurrently.
+      // it race-free even though uploads run concurrently. Folders the upload
+      // CREATES are recorded per batch so cancelling can remove them again.
       const dirCache = new Map<string, Promise<string | null>>();
       dirCache.set('', Promise.resolve(folderId));
       const ensureDir = (dirs: string[]): Promise<string | null> => {
@@ -224,8 +226,14 @@ export default function DrivePage() {
         let promise = dirCache.get(key);
         if (!promise) {
           const segment = dirs[dirs.length - 1]!;
+          const batch = batches.get(dirs[0]!);
           promise = ensureDir(dirs.slice(0, -1)).then((parentId) =>
-            driveApi.ensureFolderPath(parentId, [segment]).then((result) => result.folderId),
+            driveApi.ensureFolderPath(parentId, [segment]).then((result) => {
+              if (batch) {
+                recordCreatedFolders(batch.id, result.createdIds);
+              }
+              return result.folderId;
+            }),
           );
           dirCache.set(key, promise);
         }
@@ -275,6 +283,28 @@ export default function DrivePage() {
   function openFile(file: FileDto) {
     if (file.status === 'ready') {
       setPreview(file);
+    }
+  }
+
+  // Files whose sync to Telegram failed — retryable once the connection is
+  // healthy, because the server keeps their staged bytes for exactly this.
+  const failedCount = (drive.data?.files ?? []).filter((file) => file.status === 'error').length;
+  async function retryFailedSyncs() {
+    setError(null);
+    setBusy('Retrying sync…');
+    try {
+      const { retried, unrecoverable } = await driveApi.retryFailed();
+      await refresh();
+      if (unrecoverable > 0) {
+        await dialogs.notice({
+          title: retried > 0 ? 'Some files are syncing again' : 'These files need a fresh upload',
+          message: `${retried > 0 ? `${retried} ${retried === 1 ? 'file is' : 'files are'} on their way again. ` : ''}${unrecoverable} ${unrecoverable === 1 ? 'file' : 'files'} couldn't be retried — their data is no longer on our server (we don't keep your bytes), so please upload ${unrecoverable === 1 ? 'it' : 'them'} again from your device.`,
+        });
+      }
+    } catch (err) {
+      onError(err);
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -400,6 +430,8 @@ export default function DrivePage() {
               <button
                 className="pv-button"
                 type="button"
+                disabled={broken}
+                title={broken ? 'Reconnect your Telegram account to upload' : undefined}
                 onClick={() => setUploadMenu((open2) => !open2)}
               >
                 <UploadPortal width={16} height={16} /> Upload
@@ -452,6 +484,7 @@ export default function DrivePage() {
             <button
               className="pv-button pv-button--ghost"
               type="button"
+              disabled={broken}
               onClick={() => void newFolder()}
             >
               <FolderIcon width={16} height={16} /> New folder
@@ -484,6 +517,24 @@ export default function DrivePage() {
               {drive.data.currentFolder.name} — {formatSize(drive.data.currentFolder.totalBytes)} ·{' '}
               {drive.data.currentFolder.fileCount}{' '}
               {drive.data.currentFolder.fileCount === 1 ? 'file' : 'files'}
+            </div>
+          )}
+
+          {connected && failedCount > 0 && (
+            <div className="pv-banner pv-banner--warn">
+              <div>
+                {failedCount} {failedCount === 1 ? 'file' : 'files'} couldn’t finish syncing to
+                Telegram. Now that your connection is healthy, you can send{' '}
+                {failedCount === 1 ? 'it' : 'them'} again.
+              </div>
+              <button
+                className="pv-button"
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void retryFailedSyncs()}
+              >
+                Retry sync
+              </button>
             </div>
           )}
 

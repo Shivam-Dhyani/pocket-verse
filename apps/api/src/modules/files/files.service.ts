@@ -364,6 +364,21 @@ export function createFilesService({
                 size: Number(fileSize),
               });
             }
+            // The user ended Pocketverse's session from inside Telegram: flag
+            // the connection right here so the drive shows the reconnect
+            // banner on the very next status poll — not only after a slow
+            // upload-retry cycle finally exhausts.
+            if (error instanceof AppError && error.code === 'SESSION_REVOKED') {
+              const flagged = await prisma.storageConnection
+                .updateMany({
+                  where: { userId, status: 'CONNECTED' },
+                  data: { status: 'ERROR', lastCheckedAt: new Date(), lastError: error.message },
+                })
+                .catch(() => ({ count: 0 }));
+              if (flagged.count > 0) {
+                await audit.record(userId, AuditEventTypes.CONNECTION_SESSION_REVOKED);
+              }
+            }
             throw error;
           }
         }
@@ -402,6 +417,56 @@ export function createFilesService({
         throw notFound();
       }
       await removeFileEverywhere(fileId, userId, file.chunks, file.name);
+    },
+
+    /**
+     * Re-enqueue every failed sync whose staged bytes are still on disk (final
+     * failure keeps them for exactly this). Files whose staging is gone (disk
+     * wiped by a deploy, or the upload never finished arriving) can't be
+     * retried server-side — the bytes only exist on the user's device — so
+     * they're reported as needing a fresh upload.
+     */
+    async retryFailed(userId: string): Promise<{ retried: number; unrecoverable: number }> {
+      await requireConnected(userId);
+      const files = await prisma.file.findMany({
+        where: { ownerId: userId, status: 'ERROR' },
+        include: { chunks: { orderBy: { index: 'asc' } } },
+      });
+
+      let retried = 0;
+      let unrecoverable = 0;
+      for (const file of files) {
+        const pending = file.chunks.filter((chunk) => chunk.status !== 'UPLOADED');
+        const staged = await Promise.all(
+          pending.map((chunk) =>
+            stat(stagingPathFor(file.id, chunk.index)).then(
+              (s) => s.size,
+              () => -1,
+            ),
+          ),
+        );
+        const recoverable =
+          pending.length > 0 &&
+          pending.every((chunk, index) => staged[index] === Number(chunk.size));
+        if (!recoverable) {
+          unrecoverable += 1;
+          continue;
+        }
+        await prisma.fileChunk.updateMany({
+          where: { fileId: file.id, status: { not: 'UPLOADED' } },
+          data: { status: 'PENDING', progress: 0, attempts: 0 },
+        });
+        await prisma.file.update({ where: { id: file.id }, data: { status: 'UPLOADING' } });
+        for (const chunk of pending) {
+          await queue.enqueue('chunk-upload', {
+            fileId: file.id,
+            chunkIndex: chunk.index,
+            stagingPath: stagingPathFor(file.id, chunk.index),
+          });
+        }
+        retried += 1;
+      }
+      return { retried, unrecoverable };
     },
   };
 

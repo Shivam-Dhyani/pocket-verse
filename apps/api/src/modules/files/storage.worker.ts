@@ -92,22 +92,67 @@ export function createStorageWorker({
         'Chunk transfer to storage finished',
       );
 
-      await prisma.fileChunk.update({
-        where: { id: chunk.id },
-        data: { status: 'UPLOADED', telegramMessageId: messageId, progress: 100 },
+      // The file may have been deleted (upload cancelled) while the bytes were
+      // in flight to the channel. If its rows are gone, the message we just
+      // posted is an orphan — remove it from the user's storage immediately,
+      // otherwise a cancelled folder leaves stray chunk messages behind.
+      const removeOrphanedMessage = async () => {
+        logger.warn({ fileId, chunkIndex }, 'File deleted mid-transfer; removing orphaned message');
+        await lock(chunk.file.ownerId, () =>
+          gateway.deleteMessages(session, requireChannel(connection), [messageId]),
+        ).catch((err: unknown) =>
+          logger.error({ err, messageId }, 'Failed to remove orphaned chunk message'),
+        );
+        await rm(stagingPath, { force: true });
+      };
+
+      const survivor = await prisma.fileChunk.findUnique({
+        where: { fileId_index: { fileId, index: chunkIndex } },
       });
+      if (!survivor) {
+        await removeOrphanedMessage();
+        return;
+      }
+      try {
+        await prisma.fileChunk.update({
+          where: { id: chunk.id },
+          data: { status: 'UPLOADED', telegramMessageId: messageId, progress: 100 },
+        });
+      } catch {
+        // Row vanished between the check and the write — same cancel race.
+        await removeOrphanedMessage();
+        return;
+      }
+      // Final race window: a delete may have read the chunk (message id still
+      // null) just before our write, then removed the rows — its cleanup queue
+      // never saw this id. Verify the row survived the write; removing a
+      // message twice is harmless, missing one is not.
+      const recorded = await prisma.fileChunk
+        .findUnique({ where: { fileId_index: { fileId, index: chunkIndex } } })
+        .catch(() => null);
+      if (!recorded) {
+        await removeOrphanedMessage();
+        return;
+      }
       await rm(stagingPath, { force: true });
 
       const remaining = await prisma.fileChunk.count({
         where: { fileId, status: { not: 'UPLOADED' } },
       });
       if (remaining === 0) {
-        await prisma.file.update({ where: { id: fileId }, data: { status: 'READY' } });
-        await audit.record(chunk.file.ownerId, AuditEventTypes.FILE_UPLOADED, {
-          fileId,
-          name: chunk.file.name,
-          size: Number(chunk.file.size),
-        });
+        // The file row can also be gone by now (deleted after the last chunk
+        // landed). Its chunk messages are handled by the delete flow itself,
+        // so a failure here is fine to swallow.
+        const updated = await prisma.file
+          .update({ where: { id: fileId }, data: { status: 'READY' } })
+          .catch(() => null);
+        if (updated) {
+          await audit.record(chunk.file.ownerId, AuditEventTypes.FILE_UPLOADED, {
+            fileId,
+            name: chunk.file.name,
+            size: Number(chunk.file.size),
+          });
+        }
       }
     },
 
@@ -163,13 +208,14 @@ export function createStorageWorker({
 
   const onFinalFailure: FinalFailureHandler = async (name, payload, error) => {
     if (name === 'chunk-upload') {
-      const { fileId, chunkIndex, stagingPath } = payload as {
+      const { fileId, chunkIndex } = payload as {
         fileId: string;
         chunkIndex: number;
-        stagingPath: string;
       };
       logger.error({ err: error, fileId, chunkIndex }, 'Chunk upload failed permanently');
-      await rm(stagingPath, { force: true }).catch(() => undefined);
+      // Deliberately KEEP the staged bytes: they're what makes "retry failed
+      // syncs" possible after the cause (e.g. a revoked session) is fixed.
+      // Deleting the file/folder still removes its staging directory.
       await prisma.fileChunk
         .updateMany({
           where: { fileId, index: chunkIndex },

@@ -107,34 +107,42 @@ export default function ConnectPage() {
 
         {stage === 'disclosures' && (
           <>
-            <h1>Before you connect</h1>
-            <p className="pv-sub">The honest version — please read.</p>
+            <h1>Connect your Telegram</h1>
+            <p className="pv-sub">Here’s exactly what happens when you connect.</p>
             <ul className="pv-disclosure">
               <li>
-                Signing in gives Pocketverse an access key to your storage account. We encrypt it
-                and use it <em>only</em> to manage the private “Pocketverse Storage” channel.
+                You’ll sign in to <strong>your own Telegram account</strong> — the same phone-and-
+                code sign-in the Telegram app uses. Pocketverse never sees your Telegram password.
               </li>
               <li>
-                <strong>What we never do:</strong> read your chats, message anyone, or copy your
-                files to our servers — file bytes only pass through, never stored by us.
+                Pocketverse creates <strong>one private channel</strong> called “Pocketverse
+                Storage” inside your account. That channel is the only thing it touches — your
+                chats, contacts, and groups stay completely out of reach.
               </li>
               <li>
-                The storage platform deletes accounts inactive for 6 months. If that happens, the
-                files stored there are gone — keep the account alive or keep backups.
+                Your sign-in key is sealed with <strong>AES-256-GCM encryption</strong> on our
+                servers — never in logs, never sent to your browser, never shared.
               </li>
               <li>
-                Files are encrypted in transit but not end-to-end by the platform, and this use of a
-                personal account sits in a gray area of its terms of service.
+                Your files live in <strong>your</strong> account, not on our servers — file bytes
+                only pass through Pocketverse, they’re never stored by us.
               </li>
-              <li>You can disconnect anytime — your channel and files stay in your account.</li>
+              <li>
+                <strong>You stay in control:</strong> disconnect anytime with one click, and your
+                channel and every file in it remain safely in your account.
+              </li>
             </ul>
+            <p className="pv-footnote" style={{ textAlign: 'left' }}>
+              The complete picture — including the fine print — is always available on our{' '}
+              <Link href="/security">Security page</Link>.
+            </p>
             <label className="pv-check">
               <input
                 type="checkbox"
                 checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)}
               />
-              <span>I understand what access I’m granting and the risks above.</span>
+              <span>I understand Pocketverse will connect to my Telegram account.</span>
             </label>
             <button
               className="pv-button pv-button--block"

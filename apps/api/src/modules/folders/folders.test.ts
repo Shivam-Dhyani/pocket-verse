@@ -192,3 +192,90 @@ describe('folders', () => {
     expect((await strangerApi.delete(`/api/folders/${mine.id}`)).status).toBe(404);
   });
 });
+
+describe('cancel cleanup and delete audit detail', () => {
+  async function setup() {
+    const { createTestApp } = await import('../../test-utils/test-app.js');
+    const request = (await import('supertest')).default;
+    const ctx = createTestApp({ env: { UPLOAD_PART_SIZE_BYTES: 4, CHUNK_SIZE_BYTES: 8 } });
+    const register = await request(ctx.app)
+      .post('/api/auth/register')
+      .send({ email: 'astro2@example.com', password: 'orbit-around-9-planets' });
+    const token = register.body.accessToken as string;
+    const auth = (r: request.Test) => r.set('Authorization', `Bearer ${token}`);
+    const api = {
+      get: (url: string) => auth(request(ctx.app).get(url)),
+      post: (url: string, body?: object) => auth(request(ctx.app).post(url)).send(body),
+      delete: (url: string) => auth(request(ctx.app).delete(url)),
+      putRaw: (url: string, body: Buffer) =>
+        auth(request(ctx.app).put(url)).set('Content-Type', 'application/octet-stream').send(body),
+    };
+    await api.post('/api/connection/start', { phone: '+14155552671' });
+    await api.post('/api/connection/verify-code', { code: '12345' });
+    return { ...ctx, api };
+  }
+
+  it('ensure-path reports which folders it created (and reuses existing ones)', async () => {
+    const { api } = await setup();
+    const first = await api.post('/api/folders/ensure-path', {
+      parentId: null,
+      segments: ['proj', 'src'],
+    });
+    expect(first.body.createdIds).toHaveLength(2);
+
+    const second = await api.post('/api/folders/ensure-path', {
+      parentId: null,
+      segments: ['proj', 'src', 'deep'],
+    });
+    expect(second.body.createdIds).toHaveLength(1); // proj + src reused
+  });
+
+  it('onlyIfEmpty delete removes an empty tree but never one holding files', async () => {
+    const { api } = await setup();
+    const { folderId, createdIds } = (
+      await api.post('/api/folders/ensure-path', { parentId: null, segments: ['a', 'b'] })
+    ).body;
+
+    // With a file inside, the guarded delete refuses.
+    const create = await api.post('/api/files/uploads', {
+      name: 'keep.bin',
+      size: 4,
+      folderId,
+    });
+    await api.putRaw(`/api/files/uploads/${create.body.upload.uploadId}/parts/0`, Buffer.alloc(4));
+    const refused = await api.delete(`/api/folders/${createdIds[0]}?onlyIfEmpty=1`);
+    expect(refused.body.deleted).toBe(false);
+
+    // After the file is gone, the same call clears the skeleton.
+    await api.delete(`/api/files/${create.body.upload.fileId}`);
+    const cleared = await api.delete(`/api/folders/${createdIds[0]}?onlyIfEmpty=1`);
+    expect(cleared.body.deleted).toBe(true);
+    expect((await api.get('/api/drive')).body.folders).toHaveLength(0);
+  });
+
+  it('folder deletion records its name and a nested contents tree', async () => {
+    const { api, prisma, queue } = await setup();
+    const { folderId } = (
+      await api.post('/api/folders/ensure-path', { parentId: null, segments: ['Photos', 'Trip'] })
+    ).body;
+    const top = (await api.get('/api/drive')).body.folders[0];
+    const create = await api.post('/api/files/uploads', {
+      name: 'beach.jpg',
+      size: 4,
+      folderId,
+    });
+    await api.putRaw(`/api/files/uploads/${create.body.upload.uploadId}/parts/0`, Buffer.alloc(4));
+    await queue.drain();
+
+    await api.delete(`/api/folders/${top.id}`);
+
+    const event = prisma._state.auditEvents.find((e) => e.type === 'folder.deleted');
+    expect(event?.metadata).toMatchObject({ name: 'Photos', folders: 2, files: 1 });
+    const tree = (
+      event?.metadata as { tree: { name: string; folders: { name: string; files: string[] }[] } }
+    ).tree;
+    expect(tree.name).toBe('Photos');
+    expect(tree.folders[0]?.name).toBe('Trip');
+    expect(tree.folders[0]?.files).toContain('beach.jpg');
+  });
+});

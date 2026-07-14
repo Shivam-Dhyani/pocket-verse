@@ -85,30 +85,38 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
     /**
      * Walk a folder path, creating missing segments and reusing existing ones.
      * Powers folder uploads: the client resolves each file's directory to a
-     * real folder id so the tree is recreated exactly. Idempotent.
+     * real folder id so the tree is recreated exactly. Idempotent. Reports
+     * which segments it CREATED (vs reused) so a cancelled upload can clean up
+     * exactly the folders it introduced and nothing that existed before.
      */
     async ensureFolderPath(
       userId: string,
       parentId: string | null,
       segments: string[],
-    ): Promise<{ folderId: string }> {
+    ): Promise<{ folderId: string; createdIds: string[] }> {
       if (parentId) {
         await requireFolder(userId, parentId);
       }
       let currentId = parentId;
+      const createdIds: string[] = [];
       for (const name of segments) {
         const existing = await prisma.folder.findFirst({
           where: { ownerId: userId, parentId: currentId, name },
         });
-        currentId = existing
-          ? existing.id
-          : (await prisma.folder.create({ data: { name, parentId: currentId, ownerId: userId } }))
-              .id;
+        if (existing) {
+          currentId = existing.id;
+        } else {
+          const created = await prisma.folder.create({
+            data: { name, parentId: currentId, ownerId: userId },
+          });
+          createdIds.push(created.id);
+          currentId = created.id;
+        }
       }
       if (!currentId) {
         throw new AppError(400, 'INVALID_PATH', 'A folder path must have at least one segment.');
       }
-      return { folderId: currentId };
+      return { folderId: currentId, createdIds };
     },
 
     async updateFolder(
@@ -139,19 +147,21 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
     },
 
     async deleteFolder(userId: string, folderId: string): Promise<void> {
-      await requireFolder(userId, folderId);
+      const root = await requireFolder(userId, folderId);
 
-      // Collect the whole subtree breadth-first.
-      const folderIds = [folderId];
+      // Collect the whole subtree breadth-first (names kept for the audit tree).
+      const subtree = new Map<string, { id: string; name: string; parentId: string | null }>();
+      subtree.set(root.id, { id: root.id, name: root.name, parentId: root.parentId });
       let frontier = [folderId];
       while (frontier.length > 0) {
         const children = await prisma.folder.findMany({
           where: { ownerId: userId, parentId: { in: frontier } },
-          select: { id: true },
+          select: { id: true, name: true, parentId: true },
         });
         frontier = children.map((child) => child.id);
-        folderIds.push(...frontier);
+        children.forEach((child) => subtree.set(child.id, child));
       }
+      const folderIds = [...subtree.keys()];
 
       const files = await prisma.file.findMany({
         where: { ownerId: userId, folderId: { in: folderIds } },
@@ -175,11 +185,39 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
         files.map((file) => rm(path.join(stagingDir, file.id), { recursive: true, force: true })),
       );
 
+      // The activity log shows WHAT was deleted: the folder's name plus a
+      // nested (capped) tree of everything inside it.
+      const { tree, truncated } = buildDeletedTree(
+        folderId,
+        subtree,
+        files.map((file) => ({ name: file.name, folderId: file.folderId })),
+      );
       await audit.record(userId, AuditEventTypes.FOLDER_DELETED, {
         folderId,
+        name: root.name,
         folders: folderIds.length,
         files: files.length,
+        tree,
+        ...(truncated ? { truncated: true } : {}),
       });
+    },
+
+    /**
+     * Delete a folder only when its whole subtree holds zero files. Used by
+     * upload-cancel cleanup: it removes the empty folder skeleton the upload
+     * created, and can never take real user data with it.
+     */
+    async deleteFolderIfEmpty(userId: string, folderId: string): Promise<boolean> {
+      const folder = await prisma.folder.findUnique({ where: { id: folderId } });
+      if (!folder || folder.ownerId !== userId) {
+        return false; // already gone — that's the goal state
+      }
+      const { fileCount } = await subtreeSize(userId, folderId);
+      if (fileCount > 0) {
+        return false;
+      }
+      await prisma.folder.delete({ where: { id: folderId } });
+      return true;
     },
 
     async listDrive(userId: string, folderId: string | null): Promise<DriveListing> {
@@ -252,6 +290,67 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
 }
 
 export type FoldersService = ReturnType<typeof createFoldersService>;
+
+export interface DeletedTreeNode {
+  name: string;
+  folders: DeletedTreeNode[];
+  files: string[];
+}
+
+/** Audit metadata must stay bounded — a node_modules-sized delete would blow
+ *  up the row otherwise. Enough to answer "what exactly was in there?". */
+const DELETED_TREE_MAX_ENTRIES = 200;
+
+export function buildDeletedTree(
+  rootId: string,
+  folders: Map<string, { id: string; name: string; parentId: string | null }>,
+  files: { name: string; folderId: string | null }[],
+): { tree: DeletedTreeNode; truncated: boolean } {
+  let budget = DELETED_TREE_MAX_ENTRIES;
+  let truncated = false;
+
+  const childrenOf = new Map<string, string[]>();
+  for (const folder of folders.values()) {
+    if (folder.id === rootId || !folder.parentId) {
+      continue;
+    }
+    const list = childrenOf.get(folder.parentId) ?? [];
+    list.push(folder.id);
+    childrenOf.set(folder.parentId, list);
+  }
+  const filesOf = new Map<string, string[]>();
+  for (const file of files) {
+    if (!file.folderId) {
+      continue;
+    }
+    const list = filesOf.get(file.folderId) ?? [];
+    list.push(file.name);
+    filesOf.set(file.folderId, list);
+  }
+
+  function build(id: string): DeletedTreeNode {
+    const node: DeletedTreeNode = { name: folders.get(id)?.name ?? '', folders: [], files: [] };
+    for (const fileName of filesOf.get(id) ?? []) {
+      if (budget <= 0) {
+        truncated = true;
+        break;
+      }
+      budget -= 1;
+      node.files.push(fileName);
+    }
+    for (const childId of childrenOf.get(id) ?? []) {
+      if (budget <= 0) {
+        truncated = true;
+        break;
+      }
+      budget -= 1;
+      node.folders.push(build(childId));
+    }
+    return node;
+  }
+
+  return { tree: build(rootId), truncated };
+}
 
 function toFolderDto(folder: Folder): FolderDto {
   return {

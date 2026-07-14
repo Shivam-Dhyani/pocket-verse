@@ -35,9 +35,20 @@ export const driveApi = {
     request<{ file: FileDto }>(`/api/files/${id}`, { method: 'PATCH', body: input, auth: true }),
   deleteFile: (id: string) => request<void>(`/api/files/${id}`, { method: 'DELETE', auth: true }),
   ensureFolderPath: (parentId: string | null, segments: string[]) =>
-    request<{ folderId: string }>('/api/folders/ensure-path', {
+    request<{ folderId: string; createdIds: string[] }>('/api/folders/ensure-path', {
       method: 'POST',
       body: { parentId, segments },
+      auth: true,
+    }),
+  /** Deletes only when the folder's subtree holds no files (cancel cleanup). */
+  deleteFolderIfEmpty: (id: string) =>
+    request<{ deleted: boolean }>(`/api/folders/${id}?onlyIfEmpty=1`, {
+      method: 'DELETE',
+      auth: true,
+    }),
+  retryFailed: () =>
+    request<{ retried: number; unrecoverable: number }>('/api/files/retry-failed', {
+      method: 'POST',
       auth: true,
     }),
 };

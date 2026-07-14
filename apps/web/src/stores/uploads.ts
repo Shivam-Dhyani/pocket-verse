@@ -115,7 +115,20 @@ const controllers = new Map<string, Controller>();
 // Uploads the user cancelled: part loops exit, queued pool jobs are skipped,
 // and a session created in the race window is cleaned up.
 const cancelledIds = new Set<string>();
+// Folders a batch CREATED via ensure-path (never pre-existing ones) — in
+// creation order, so parents precede children. A cancelled batch removes them
+// if they hold no files, leaving no empty skeleton behind.
+const batchCreatedFolders = new Map<string, string[]>();
 let counter = 0;
+
+export function recordCreatedFolders(batchId: string, ids: string[]): void {
+  if (ids.length === 0) {
+    return;
+  }
+  const list = batchCreatedFolders.get(batchId) ?? [];
+  list.push(...ids);
+  batchCreatedFolders.set(batchId, list);
+}
 
 /**
  * Register many uploads in a single store update, returning one id per input
@@ -205,6 +218,7 @@ async function deleteServerFile(fileId: string): Promise<void> {
 export function cancelUploads(entryIds: string[], onSettled: () => void): void {
   const store = useUploadsStore.getState();
   const fileIds: string[] = [];
+  const batchIds = new Set<string>();
   for (const id of entryIds) {
     cancelledIds.add(id);
     const ctrl = controllers.get(id);
@@ -215,6 +229,9 @@ export function cancelUploads(entryIds: string[], onSettled: () => void): void {
     if (entry?.fileId) {
       fileIds.push(entry.fileId);
     }
+    if (entry?.batchId) {
+      batchIds.add(entry.batchId);
+    }
     controllers.delete(id);
   }
   store.removeMany(entryIds);
@@ -222,6 +239,19 @@ export function cancelUploads(entryIds: string[], onSettled: () => void): void {
   void (async () => {
     for (const fileId of fileIds) {
       await deleteServerFile(fileId);
+    }
+    // Files are gone — now remove the folders this batch created, deepest
+    // first (reverse creation order). The onlyIfEmpty guard means a folder
+    // that gained real user content in the meantime is left alone.
+    for (const batchId of batchIds) {
+      const created = batchCreatedFolders.get(batchId) ?? [];
+      batchCreatedFolders.delete(batchId);
+      for (const folderId of [...created].reverse()) {
+        await request<{ deleted: boolean }>(`/api/folders/${folderId}?onlyIfEmpty=1`, {
+          method: 'DELETE',
+          auth: true,
+        }).catch(() => undefined);
+      }
     }
     onSettled();
   })();
@@ -405,6 +435,7 @@ function scheduleDismiss(id: string): void {
     if (members.length > 0 && members.every((e) => e.state === 'syncing')) {
       members.forEach((e) => controllers.delete(e.id));
       useUploadsStore.getState().removeMany(members.map((e) => e.id));
+      batchCreatedFolders.delete(batchId); // batch finished — nothing to clean up
     }
   }, 1200);
 }

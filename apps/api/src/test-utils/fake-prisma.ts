@@ -361,6 +361,25 @@ export function createFakePrisma() {
         connections.delete(where.id);
         return { ...row };
       },
+      updateMany: async ({
+        where,
+        data,
+      }: {
+        where: { userId?: string; status?: StorageConnectionRow['status'] };
+        data: Partial<StorageConnectionRow>;
+      }) => {
+        let count = 0;
+        for (const row of connections.values()) {
+          if (
+            (where.userId === undefined || row.userId === where.userId) &&
+            (where.status === undefined || row.status === where.status)
+          ) {
+            Object.assign(row, data, { updatedAt: new Date() });
+            count += 1;
+          }
+        }
+        return { count };
+      },
       // Supports the keep-alive sweep's stale-connection query.
       findMany: async ({
         where,
@@ -516,6 +535,7 @@ export function createFakePrisma() {
         where: {
           ownerId: string;
           folderId?: IdFilter;
+          status?: FileRow['status'];
           name?: { contains: string; mode?: string };
         };
         orderBy?: unknown;
@@ -526,6 +546,7 @@ export function createFakePrisma() {
           (f) =>
             f.ownerId === where.ownerId &&
             matchesIdFilter(f.folderId, where.folderId) &&
+            (where.status === undefined || f.status === where.status) &&
             (where.name === undefined ||
               f.name.toLowerCase().includes(where.name.contains.toLowerCase())),
         );
@@ -696,12 +717,15 @@ export function createFakePrisma() {
         where,
         data,
       }: {
-        where: { fileId: string; index?: number };
+        where: { fileId: string; index?: number; status?: { not: FileChunkRow['status'] } };
         data: Partial<FileChunkRow>;
       }) => {
         let count = 0;
         for (const row of chunksOf(where.fileId)) {
-          if (where.index === undefined || row.index === where.index) {
+          if (
+            (where.index === undefined || row.index === where.index) &&
+            (where.status === undefined || row.status !== where.status.not)
+          ) {
             Object.assign(row, data);
             count += 1;
           }

@@ -39,6 +39,10 @@ interface DialogsApi {
   prompt: (options: PromptOptions) => Promise<string | null>;
   /** A single-button informational dialog (no destructive choice to make). */
   notice: (options: NoticeOptions) => Promise<void>;
+  /** Programmatically close the open dialog as if the user cancelled it —
+   *  for dialogs whose question stopped making sense (e.g. "cancel this
+   *  upload?" after the upload finished). */
+  dismiss: () => void;
 }
 
 const DialogsContext = createContext<DialogsApi | null>(null);
@@ -84,6 +88,15 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
         new Promise<void>((resolve) => {
           resolver.current = resolve as (value: unknown) => void;
           setState({ kind: 'notice', options });
+        }),
+      dismiss: () =>
+        setState((current) => {
+          if (current) {
+            // Resolve as a cancel: confirm → false, prompt → null, notice → done.
+            resolver.current?.(current.kind === 'confirm' ? false : null);
+            resolver.current = null;
+          }
+          return null;
         }),
     }),
     [],

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import {
   cancelUploads,
   dismissGroup,
@@ -49,9 +50,30 @@ function statusText(group: UploadGroup): string {
 function UploadRow({ group, onSettled }: { group: UploadGroup; onSettled: () => void }) {
   const dialogs = useDialogs();
   const isFolder = group.kind === 'folder';
+  // True while OUR cancel-confirmation is on screen — so it can be closed
+  // automatically if the upload finishes and the question becomes moot.
+  const cancelDialogOpen = useRef(false);
+
+  useEffect(() => {
+    if (cancelDialogOpen.current && group.state !== 'uploading' && group.state !== 'paused') {
+      cancelDialogOpen.current = false;
+      dialogs.dismiss();
+    }
+  }, [group.state, dialogs]);
+  // The row itself vanishes shortly after the upload settles — close a still-
+  // open cancel dialog rather than leaving it orphaned on screen.
+  useEffect(
+    () => () => {
+      if (cancelDialogOpen.current) {
+        dialogs.dismiss();
+      }
+    },
+    [dialogs],
+  );
 
   async function confirmCancel() {
     const what = isFolder ? `“${group.label}” and its files` : `“${group.label}”`;
+    cancelDialogOpen.current = true;
     const ok = await dialogs.confirm({
       title: 'Cancel this upload?',
       message: `This stops the upload of ${what}. Anything from it that already reached your drive will be removed — from Pocketverse and from your Telegram storage — so nothing arrives half-finished.`,
@@ -59,7 +81,14 @@ function UploadRow({ group, onSettled }: { group: UploadGroup; onSettled: () => 
       cancelLabel: 'Keep uploading',
       danger: true,
     });
-    if (ok) {
+    cancelDialogOpen.current = false;
+    // The upload may have completed while the dialog was open — cancelling a
+    // finished upload would silently do nothing, so only act if it's live.
+    const stillActive = group.entryIds.some((id) => {
+      const entry = useUploadsStore.getState().uploads[id];
+      return entry && (entry.state === 'uploading' || entry.state === 'paused');
+    });
+    if (ok && stillActive) {
       cancelUploads(group.entryIds, onSettled);
     }
   }

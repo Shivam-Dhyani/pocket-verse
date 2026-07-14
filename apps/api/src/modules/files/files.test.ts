@@ -366,3 +366,82 @@ describe('file management', () => {
     expect((await api.post('/api/files/uploads', { name: 'ok.bin', size: 0 })).status).toBe(400);
   });
 });
+
+describe('cancel and retry robustness', () => {
+  it('removes the just-posted channel message when the file was deleted mid-transfer', async () => {
+    // Removing the DB rows while the chunk bytes are in flight to the channel
+    // simulates a cancel landing at the worst possible moment: too late to
+    // stop the post, too early for the message id to be recorded anywhere.
+    let deleteRowsMidFlight: (() => Promise<void>) | null = null;
+    const ctx = await setupConnected({
+      gateway: {
+        beforeUpload: async () => {
+          await deleteRowsMidFlight?.();
+          deleteRowsMidFlight = null;
+        },
+      },
+    });
+
+    const content = randomBytes(6);
+    const create = await ctx.api.post('/api/files/uploads', { name: 'ghost.bin', size: 6 });
+    const { uploadId, partSize } = create.body.upload;
+    const fileId = create.body.upload.fileId as string;
+    deleteRowsMidFlight = async () => {
+      await ctx.prisma.file.delete({ where: { id: fileId } });
+    };
+    await ctx.api.putRaw(`/api/files/uploads/${uploadId}/parts/0`, content.subarray(0, partSize));
+    await ctx.api.putRaw(`/api/files/uploads/${uploadId}/parts/1`, content.subarray(partSize));
+    await ctx.queue.drain();
+
+    // The posted message was detected as orphaned and removed from the channel.
+    expect(ctx.gatewayCalls.some((call) => call.method === 'deleteMessages')).toBe(true);
+    expect(ctx.channelStore.size).toBe(0);
+  });
+
+  it('retries failed syncs from kept staging after the connection recovers', async () => {
+    let failing = true;
+    const { api, queue } = await setupConnected({
+      gateway: {
+        beforeUpload: async () => {
+          if (failing) {
+            throw new AppError(502, 'STORAGE_UNAVAILABLE', 'nope');
+          }
+        },
+      },
+    });
+
+    const { fileId } = await uploadWhole(api, randomBytes(6), 'later.bin');
+    await queue.drain();
+    expect((await api.get(`/api/files/${fileId}`)).body.file.status).toBe('error');
+
+    // Connection is healthy again — retry re-enqueues from the kept staging.
+    failing = false;
+    const retry = await api.post('/api/files/retry-failed');
+    expect(retry.status).toBe(200);
+    expect(retry.body).toMatchObject({ retried: 1, unrecoverable: 0 });
+    await queue.drain();
+
+    expect((await api.get(`/api/files/${fileId}`)).body.file.status).toBe('ready');
+  });
+
+  it('reports files as unrecoverable when their staged bytes are gone', async () => {
+    const { api, queue, env } = await setupConnected({
+      gateway: {
+        beforeUpload: async () => {
+          throw new AppError(502, 'STORAGE_UNAVAILABLE', 'nope');
+        },
+      },
+    });
+    const { fileId } = await uploadWhole(api, randomBytes(6), 'wiped.bin');
+    await queue.drain();
+
+    // Simulate a deploy wiping the staging disk.
+    const { rm } = await import('node:fs/promises');
+    const path = await import('node:path');
+    await rm(path.join(env.STAGING_DIR, fileId), { recursive: true, force: true });
+
+    const retry = await api.post('/api/files/retry-failed');
+    expect(retry.body).toMatchObject({ retried: 0, unrecoverable: 1 });
+    expect((await api.get(`/api/files/${fileId}`)).body.file.status).toBe('error');
+  });
+});

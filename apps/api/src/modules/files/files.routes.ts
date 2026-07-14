@@ -91,6 +91,11 @@ export function createFilesRouter(
     res.status(201).json({ upload: await service.createUpload(req.user!.id, req.body) });
   });
 
+  // Re-enqueue failed syncs whose staged bytes we still hold.
+  router.post('/retry-failed', async (req, res) => {
+    res.json(await service.retryFailed(req.user!.id));
+  });
+
   router.get('/uploads/:id', async (req, res) => {
     res.json({ upload: await service.getUpload(req.user!.id, req.params.id) });
   });

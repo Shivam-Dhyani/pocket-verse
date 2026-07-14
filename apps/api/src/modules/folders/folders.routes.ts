@@ -29,6 +29,12 @@ export function createFoldersRouter(service: FoldersService, jwt: JwtHelpers): R
   });
 
   router.delete('/:id', async (req, res) => {
+    // ?onlyIfEmpty=1: delete only when the subtree holds no files — used by
+    // upload-cancel cleanup so it can never take user data with it.
+    if (req.query.onlyIfEmpty === '1') {
+      res.json({ deleted: await service.deleteFolderIfEmpty(req.user!.id, req.params.id) });
+      return;
+    }
     await service.deleteFolder(req.user!.id, req.params.id);
     res.status(204).end();
   });

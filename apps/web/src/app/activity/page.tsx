@@ -4,8 +4,53 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import type { ActivityPage } from '@pocketverse/shared';
 import { request } from '@/lib/api';
 import { AppHeader } from '@/components/app-header';
-import { ActivityIcon } from '@/components/icons';
+import { ActivityIcon, FileIcon, FolderIcon } from '@/components/icons';
 import { EmptyState, timeAgo } from '@/components/ui';
+
+/** Shape of the capped contents tree recorded when a folder is deleted. */
+interface DeletedNode {
+  name: string;
+  folders: DeletedNode[];
+  files: string[];
+}
+
+function isDeletedNode(value: unknown): value is DeletedNode {
+  const node = value as DeletedNode | null;
+  return Boolean(
+    node &&
+    typeof node.name === 'string' &&
+    Array.isArray(node.folders) &&
+    Array.isArray(node.files),
+  );
+}
+
+/** Recursive accordion of what a deleted folder contained, level by level. */
+function DeletedTree({ node }: { node: DeletedNode }) {
+  const FileLeaf = ({ name }: { name: string }) => (
+    <div className="pv-deleted-leaf">
+      <FileIcon width={13} height={13} /> {name}
+    </div>
+  );
+  const count = node.folders.length + node.files.length;
+  return (
+    <details className="pv-deleted-tree">
+      <summary>
+        <FolderIcon width={13} height={13} /> {node.name}
+        <span className="count">
+          {count} {count === 1 ? 'item' : 'items'}
+        </span>
+      </summary>
+      <div className="pv-deleted-children">
+        {node.folders.map((child, index) => (
+          <DeletedTree key={`${child.name}-${index}`} node={child} />
+        ))}
+        {node.files.map((file, index) => (
+          <FileLeaf key={`${file}-${index}`} name={file} />
+        ))}
+      </div>
+    </details>
+  );
+}
 
 /** Human labels for the audit event types recorded since Phase 2. */
 function describe(type: string, metadata: Record<string, unknown> | null): string {
@@ -37,8 +82,11 @@ function describe(type: string, metadata: Record<string, unknown> | null): strin
       return `Upload failed for ${name || 'a file'}`;
     case 'file.deleted':
       return `Deleted ${name || 'a file'}`;
-    case 'folder.deleted':
-      return 'Deleted a folder';
+    case 'folder.deleted': {
+      const files = typeof metadata?.files === 'number' ? metadata.files : 0;
+      const suffix = files > 0 ? ` and the ${files} ${files === 1 ? 'file' : 'files'} inside` : '';
+      return `Deleted the folder ${name || ''}${suffix}`.replace('  ', ' ');
+    }
     case 'drive.index_cleared': {
       const files = typeof metadata?.files === 'number' ? metadata.files : 0;
       const folders = typeof metadata?.folders === 'number' ? metadata.folders : 0;
@@ -87,7 +135,22 @@ export default function ActivityPage() {
                   <span className="pv-row-icon">
                     <ActivityIcon width={16} height={16} />
                   </span>
-                  {describe(event.type, event.metadata)}
+                  <div className="pv-timeline-main">
+                    {describe(event.type, event.metadata)}
+                    {event.type === 'folder.deleted' && isDeletedNode(event.metadata?.tree) && (
+                      <>
+                        <DeletedTree node={event.metadata.tree} />
+                        {Boolean(event.metadata?.truncated) && (
+                          <p
+                            className="pv-footnote"
+                            style={{ textAlign: 'left', margin: '4px 0 0' }}
+                          >
+                            …and more — the list is shortened for very large folders.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
                   <span className="when">{timeAgo(event.createdAt)}</span>
                 </li>
               ))}
