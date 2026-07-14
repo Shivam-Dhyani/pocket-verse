@@ -4,11 +4,13 @@ import { AppHeader } from '@/components/app-header';
 import {
   ActivityIcon,
   FolderIcon,
+  LinkedInIcon,
   LockIcon,
   OrbitLogo,
   ShieldIcon,
   UploadPortal,
 } from '@/components/icons';
+import { CREATOR } from '@/lib/creator';
 
 const FEATURES = [
   {
@@ -125,6 +127,34 @@ export default function AboutPage() {
                 </span>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section className="pv-section">
+          <h2>The person behind Pocketverse</h2>
+          <div className="pv-maker-card">
+            <span className="pv-maker-avatar" aria-hidden>
+              {CREATOR.name
+                .split(' ')
+                .map((part) => part[0])
+                .join('')}
+            </span>
+            <div>
+              <p style={{ margin: '0 0 2px', fontWeight: 600 }}>{CREATOR.name}</p>
+              <p className="pv-sub" style={{ margin: '0 0 var(--pv-s3)' }}>
+                Pocketverse is designed and built by one person who believes your files should live
+                in storage you own. Questions, ideas, or feedback — always welcome.
+              </p>
+              <a
+                className="pv-button pv-button--ghost"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                href={CREATOR.linkedin}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <LinkedInIcon width={15} height={15} /> Connect on LinkedIn
+              </a>
+            </div>
           </div>
         </section>
       </article>

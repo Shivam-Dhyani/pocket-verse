@@ -1536,3 +1536,51 @@ button {
   align-items: center;
   gap: 6px;
 }
+
+/* Creator credit: landing footer + About page maker card. */
+.pv-made-by {
+  margin-top: var(--pv-s7);
+  font-size: var(--pv-text-sm);
+  color: var(--pv-text-muted);
+}
+
+.pv-made-by a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--pv-text);
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 1px solid var(--pv-border-strong);
+  transition: color var(--pv-fast);
+}
+
+.pv-made-by a:hover {
+  color: var(--pv-accent);
+}
+
+.pv-maker-card {
+  display: flex;
+  gap: var(--pv-s4);
+  align-items: flex-start;
+  border: 1px solid var(--pv-border);
+  border-radius: var(--pv-radius-lg);
+  background: var(--pv-surface);
+  box-shadow: var(--pv-shadow);
+  padding: var(--pv-s5);
+  margin-top: var(--pv-s4);
+}
+
+.pv-maker-avatar {
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--pv-gradient);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { AuthForward } from '@/components/auth-forward';
-import { LockIcon, OrbitLogo, ShieldIcon, UploadPortal } from '@/components/icons';
+import { LinkedInIcon, LockIcon, OrbitLogo, ShieldIcon, UploadPortal } from '@/components/icons';
+import { CREATOR } from '@/lib/creator';
 
 export default function LandingPage() {
   return (
@@ -47,6 +48,13 @@ export default function LandingPage() {
           <p>Real progress, plain-language risks, and an activity log you can read.</p>
         </div>
       </div>
+
+      <footer className="pv-made-by">
+        Crafted by{' '}
+        <a href={CREATOR.linkedin} target="_blank" rel="noopener noreferrer">
+          {CREATOR.name} <LinkedInIcon width={14} height={14} />
+        </a>
+      </footer>
     </main>
   );
 }
