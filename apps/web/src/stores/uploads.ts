@@ -62,21 +62,23 @@ interface UploadsStore {
 
 export const useUploadsStore = create<UploadsStore>((set) => ({
   uploads: {},
+  // Patch-only by design: entries are born via addMany/registerUploads. A
+  // patch for an id that's gone (cancelled/dismissed) is dropped — otherwise a
+  // straggling progress update from an in-flight request would resurrect a
+  // ghost, nameless "Uploading" card that never goes away.
   set: (id, patch) =>
-    set((state) => ({
-      uploads: {
-        ...state.uploads,
-        [id]: {
-          id,
-          name: '',
-          fraction: 0,
-          state: 'uploading',
-          size: 0,
-          ...state.uploads[id],
-          ...patch,
+    set((state) => {
+      const existing = state.uploads[id];
+      if (!existing) {
+        return state;
+      }
+      return {
+        uploads: {
+          ...state.uploads,
+          [id]: { ...existing, ...patch },
         },
-      },
-    })),
+      };
+    }),
   addMany: (entries) =>
     set((state) => {
       const uploads = { ...state.uploads };

@@ -75,11 +75,13 @@ function describe(type: string, metadata: Record<string, unknown> | null): strin
     case 'connection.health_failed':
       return 'Storage connection check failed';
     case 'connection.session_revoked':
-      return 'Pocketverse’s session was ended from inside Telegram — reconnect to resume syncing';
+      return 'Pocketverse was signed out of your Telegram account (this was done from inside the Telegram app)';
     case 'file.uploaded':
       return `Uploaded ${name || 'a file'}`;
     case 'file.upload_failed':
-      return `Upload failed for ${name || 'a file'}`;
+      return metadata?.reason === 'disconnected'
+        ? `${name || 'A file'} didn’t finish uploading before Telegram was disconnected — you can upload it again anytime`
+        : `Upload failed for ${name || 'a file'}`;
     case 'file.deleted':
       return `Deleted ${name || 'a file'}`;
     case 'folder.deleted': {

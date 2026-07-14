@@ -110,6 +110,46 @@ export default function DrivePage() {
     }
   }, [me.isError, router]);
 
+  // Once signed in, the drive is the app's floor — pressing Back would only
+  // fall out of the app (users expect mobile-app behavior here). A guard
+  // history entry catches Back and asks first; leaving mid-upload gets a
+  // stronger warning. In-app navigation (Security, Activity, …) is unaffected.
+  useEffect(() => {
+    if (!(connected || broken)) {
+      return;
+    }
+    window.history.pushState({ ...window.history.state, pvGuard: true }, '');
+    const onPop = (event: PopStateEvent) => {
+      if ((event.state as { pvGuard?: boolean } | null)?.pvGuard) {
+        return; // returned from a forward page onto the guard — normal back-nav
+      }
+      // Re-arm immediately so the page stays put while we ask.
+      window.history.pushState({ ...window.history.state, pvGuard: true }, '');
+      const uploading = Object.values(useUploadsStore.getState().uploads).some(
+        (entry) => entry.state === 'uploading' || entry.state === 'paused',
+      );
+      void dialogs
+        .confirm({
+          title: uploading ? 'An upload is still running' : 'Leave your drive?',
+          message: uploading
+            ? 'Going back now will stop the upload that is in progress. We recommend staying until it finishes.'
+            : 'Going back will take you out of Pocketverse. Are you sure?',
+          confirmLabel: 'Leave',
+          cancelLabel: uploading ? 'Stay and finish' : 'Stay',
+          danger: uploading,
+        })
+        .then((ok) => {
+          if (ok) {
+            window.removeEventListener('popstate', onPop);
+            window.history.go(-2); // past both guard entries, out of the app
+          }
+        });
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+    // `dialogs` is stable (memoized provider API) — deps limited to the gates.
+  }, [connected, broken, dialogs]);
+
   // Refreshing the drive also refreshes the header storage total so the size
   // chip updates without a page reload.
   const refresh = useCallback(async () => {

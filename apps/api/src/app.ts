@@ -83,7 +83,7 @@ export function createApp({
   // budget stays tight to guard unauthenticated/abuse traffic.
   app.use(
     limiters.general({
-      skip: (req) => /^\/api\/(files|folders|drive|activity|stats)(\/|$)/.test(req.path),
+      skip: (req) => /^\/api\/(files|folders|drive|activity|stats|connection)(\/|$)/.test(req.path),
     }),
   );
 
@@ -115,8 +115,15 @@ export function createApp({
     keyring,
     audit,
     lock,
+    stagingDir: env.STAGING_DIR,
   });
-  app.use('/api/connection', limiters.connection, createConnectionRouter(connectionService, jwt));
+  // The generous limiter covers the router (status polling, phone reveal,
+  // disconnect); the strict OTP budget applies only inside, on start/verify.
+  app.use(
+    '/api/connection',
+    limiters.uploads,
+    createConnectionRouter(connectionService, jwt, limiters.connection),
+  );
 
   const filesService = createFilesService({
     prisma,

@@ -53,6 +53,18 @@ export default function ConnectPage() {
   const connection = status.data?.connection;
   const busy = start.isPending || verifyCode.isPending || verifyPassword.isPending;
 
+  // True only when the user completed the wizard in THIS visit — then the
+  // "you're connected" step is a real destination. Arriving here already
+  // connected (e.g. pressing Back from the drive) is not: forward to /drive
+  // with a replace so /connect never lingers in the back stack.
+  const finishedFlowHere = start.isSuccess || verifyCode.isSuccess || verifyPassword.isSuccess;
+  const alreadyConnected = connection?.status === 'connected';
+  useEffect(() => {
+    if (alreadyConnected && !finishedFlowHere) {
+      router.replace('/drive');
+    }
+  }, [alreadyConnected, finishedFlowHere, router]);
+
   // Derive the wizard stage from server state + local disclosure gate.
   const stage: Stage =
     connection?.status === 'connected'
@@ -120,8 +132,10 @@ export default function ConnectPage() {
                 chats, contacts, and groups stay completely out of reach.
               </li>
               <li>
-                Your sign-in key is sealed with <strong>AES-256-GCM encryption</strong> on our
-                servers — never in logs, never sent to your browser, never shared.
+                Your sign-in key is kept like <strong>a locker inside a bank vault</strong>: sealed
+                in its own locked box, then locked again inside a vault on our server. It’s opened
+                only for the split second it’s needed — never written in logs, never sent to your
+                browser, never shared.
               </li>
               <li>
                 Your files live in <strong>your</strong> account, not on our servers — file bytes
@@ -132,10 +146,6 @@ export default function ConnectPage() {
                 channel and every file in it remain safely in your account.
               </li>
             </ul>
-            <p className="pv-footnote" style={{ textAlign: 'left' }}>
-              The complete picture — including the fine print — is always available on our{' '}
-              <Link href="/security">Security page</Link>.
-            </p>
             <label className="pv-check">
               <input
                 type="checkbox"
@@ -234,7 +244,8 @@ export default function ConnectPage() {
       {stage !== 'done' && (
         <p className="pv-footnote" style={{ marginTop: 'var(--pv-s4)' }}>
           <ShieldIcon width={13} height={13} style={{ verticalAlign: '-2px' }} /> Your connection is
-          encrypted at rest. <Link href="/security">How it works</Link>
+          encrypted at rest — the complete picture, fine print included, is on our{' '}
+          <Link href="/security">Security page</Link>.
         </p>
       )}
     </main>

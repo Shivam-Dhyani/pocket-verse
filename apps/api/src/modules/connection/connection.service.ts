@@ -1,3 +1,5 @@
+import { rm } from 'node:fs/promises';
+import path from 'node:path';
 import type { PrismaClient, StorageConnection } from '@prisma/client';
 import type { ConnectionDto } from '@pocketverse/shared';
 import {
@@ -26,6 +28,8 @@ export interface ConnectionServiceDeps {
   keyring: MasterKeyring;
   audit: AuditService;
   lock: KeyedMutex;
+  /** Where in-flight chunk bytes are staged — purged on disconnect. */
+  stagingDir: string;
 }
 
 const noPendingError = () =>
@@ -48,6 +52,7 @@ export function createConnectionService({
   keyring,
   audit,
   lock,
+  stagingDir,
 }: ConnectionServiceDeps) {
   const aad = (userId: string) => `user:${userId}:connection`;
 
@@ -314,12 +319,33 @@ export function createConnectionService({
         // that list but can't open or download. Purge the user's drive so a
         // reconnect starts clean. (The bytes remain safe in the user's own
         // channel — we simply stop tracking them.)
-        const [clearedFiles, folderCount] = await Promise.all([
+        const [clearedFiles, folderCount, fileRows] = await Promise.all([
           prisma.file.aggregate({ where: { ownerId: userId }, _count: true, _sum: { size: true } }),
           prisma.folder.count({ where: { ownerId: userId } }),
+          prisma.file.findMany({ where: { ownerId: userId } }),
         ]);
         await prisma.file.deleteMany({ where: { ownerId: userId } });
         await prisma.folder.deleteMany({ where: { ownerId: userId } });
+
+        // Staged bytes exist only to finish a sync — with the account removed
+        // there is nothing to finish. Delete them all, and record every file
+        // that never fully reached the channel as a failed upload so the
+        // activity log tells the user exactly what to upload again.
+        await Promise.all(
+          fileRows.map((file) =>
+            rm(path.join(stagingDir, file.id), { recursive: true, force: true }).catch(
+              () => undefined,
+            ),
+          ),
+        );
+        const unfinished = fileRows.filter((file) => file.status !== 'READY').slice(0, 50);
+        for (const file of unfinished) {
+          await audit.record(userId, AuditEventTypes.FILE_UPLOAD_FAILED, {
+            fileId: file.id,
+            name: file.name,
+            reason: 'disconnected',
+          });
+        }
 
         await prisma.storageConnection.delete({ where: { id: connection.id } });
         // The activity log is the user's record of exactly what stopped being
