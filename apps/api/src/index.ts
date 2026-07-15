@@ -1,5 +1,7 @@
 // Must be first: fills process.env from .env files before validation runs.
 import './config/load-env-files.js';
+// Second: init Sentry before app modules load so Express is auto-instrumented.
+import './instrument.js';
 import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import { loadMasterKeyring } from './lib/crypto/index.js';

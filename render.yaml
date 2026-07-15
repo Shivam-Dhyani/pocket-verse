@@ -47,3 +47,6 @@ services:
         sync: false
       - key: MAIL_FROM
         sync: false
+      # Optional: Sentry error tracking for the API. Unset → no reports sent.
+      - key: SENTRY_DSN
+        sync: false

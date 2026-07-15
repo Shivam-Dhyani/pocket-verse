@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/space-grotesk';
+import { Analytics } from '@/components/analytics';
 import { Providers } from '@/components/providers';
 import './globals.css';
 
@@ -18,6 +19,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <body>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+        <Suspense fallback={null}>
+          <Analytics />
+        </Suspense>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -93,12 +93,15 @@ What's already handled in code for this environment:
 2. **Root Directory:** `apps/web` (Vercel auto-detects Next.js and pnpm).
 3. Environment variables:
 
-   | Var                                  | Value                      |
-   | ------------------------------------ | -------------------------- |
-   | `NEXT_PUBLIC_API_URL`                | the Render URL from step 3 |
-   | `NEXT_PUBLIC_UPLOAD_WARN_FILE_COUNT` | optional, default 500      |
-   | `NEXT_PUBLIC_UPLOAD_MAX_FILE_COUNT`  | optional, default 2000     |
-   | `NEXT_PUBLIC_UPLOAD_SUGGESTED_BATCH` | optional, default 300      |
+   | Var                                                   | Value                                                   |
+   | ----------------------------------------------------- | ------------------------------------------------------- |
+   | `NEXT_PUBLIC_API_URL`                                 | the Render URL from step 3                              |
+   | `NEXT_PUBLIC_UPLOAD_WARN_FILE_COUNT`                  | optional, default 500                                   |
+   | `NEXT_PUBLIC_UPLOAD_MAX_FILE_COUNT`                   | optional, default 2000                                  |
+   | `NEXT_PUBLIC_UPLOAD_SUGGESTED_BATCH`                  | optional, default 300                                   |
+   | `NEXT_PUBLIC_GA_ID`                                   | optional — GA4 id (`G-…`)                               |
+   | `NEXT_PUBLIC_SENTRY_DSN`                              | optional — Sentry browser DSN                           |
+   | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | optional — upload source maps for readable stack traces |
 
 4. Deploy and note the URL, e.g. `https://pocketverse.vercel.app`.
 

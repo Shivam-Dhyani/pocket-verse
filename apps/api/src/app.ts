@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import * as Sentry from '@sentry/node';
 import type { PrismaClient } from '@prisma/client';
 import type { Logger } from 'pino';
 import type { Env } from './config/env.js';
@@ -152,6 +153,12 @@ export function createApp({
   app.use('/api/stats', limiters.uploads, createStatsRouter(prisma, jwt));
 
   app.use(notFoundHandler);
+  // Sentry's error handler reports unhandled errors (secrets scrubbed in
+  // instrument.ts) before our own handler formats the response. No-op unless
+  // Sentry was initialized (SENTRY_DSN set).
+  if (env.SENTRY_DSN) {
+    Sentry.setupExpressErrorHandler(app);
+  }
   app.use(createErrorHandler(logger, { includeHints: env.NODE_ENV !== 'production' }));
 
   return app;

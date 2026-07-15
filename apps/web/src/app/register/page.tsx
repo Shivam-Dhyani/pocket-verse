@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { registerSchema } from '@pocketverse/shared';
+import { track } from '@/lib/analytics';
 import { api, ApiError } from '@/lib/api';
 import { useForwardIfAuthed } from '@/components/auth-forward';
 import { PasswordField } from '@/components/password-field';
@@ -22,6 +23,7 @@ export default function RegisterPage() {
     mutationFn: api.register,
     onSuccess: (result) => {
       setSession(result);
+      track('signed_up');
       // replace, not push: keep /register out of history so Back doesn't land here.
       router.replace('/drive');
     },

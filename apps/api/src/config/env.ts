@@ -29,6 +29,8 @@ const envSchema = z.object({
   // of sent, which keeps local development fully testable.
   RESEND_API_KEY: z.string().min(1).optional(),
   MAIL_FROM: z.string().min(3).optional(),
+  // Error tracking (Sentry). Unset → no error reports are sent (dev default).
+  SENTRY_DSN: z.string().url().optional(),
   // Telegram-level chunk size (handoff: 1.5GB default, tune later).
   CHUNK_SIZE_BYTES: z.coerce.number().int().positive().default(1_500_000_000),
   // HTTP upload part size — small enough for free-tier request timeouts.

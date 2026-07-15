@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import type { FileDto, FolderDto } from '@pocketverse/shared';
+import { track } from '@/lib/analytics';
 import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
 import { downloadFile, driveApi, relativePathOf } from '@/lib/files';
@@ -227,6 +228,10 @@ export default function DrivePage() {
       }
 
       setError(null);
+      track('upload_started', {
+        files: files.length,
+        is_folder: relativePathOf(files[0]!).dirs.length > 0,
+      });
       // One batch per top-level folder in this drop, so a whole folder shows as
       // a single item in the upload panel (not one row per file inside it).
       const nonce = Date.now().toString(36);
@@ -323,6 +328,7 @@ export default function DrivePage() {
   function openFile(file: FileDto) {
     if (file.status === 'ready') {
       setPreview(file);
+      track('file_previewed'); // no name/id — just the count
     }
   }
 
@@ -333,6 +339,7 @@ export default function DrivePage() {
     setError(null);
     setBusy('Retrying sync…');
     try {
+      track('retry_sync_clicked', { failed: failedCount });
       const { retried, unrecoverable } = await driveApi.retryFailed();
       await refresh();
       if (unrecoverable > 0) {

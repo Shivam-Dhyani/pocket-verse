@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { loginSchema } from '@pocketverse/shared';
+import { track } from '@/lib/analytics';
 import { api, ApiError } from '@/lib/api';
 import { useForwardIfAuthed } from '@/components/auth-forward';
 import { PasswordField } from '@/components/password-field';
@@ -23,6 +24,7 @@ export default function LoginPage() {
     mutationFn: api.login,
     onSuccess: (result) => {
       setSession(result);
+      track('signed_in');
       // replace, not push: keep /login out of history so Back doesn't land here.
       router.replace('/drive');
     },

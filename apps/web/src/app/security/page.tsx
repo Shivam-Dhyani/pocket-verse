@@ -134,6 +134,33 @@ export default function SecurityPage() {
           </details>
 
           <details>
+            <summary>Analytics &amp; error monitoring — what we measure</summary>
+            <div className="pv-accordion-body">
+              <p>
+                To keep Pocketverse working well we use privacy-respecting analytics and error
+                monitoring. We are deliberately strict about what they may see:
+              </p>
+              <ul>
+                <li>
+                  <strong>Analytics</strong> records anonymous page views and coarse feature counts
+                  (e.g. “an upload started”). It <em>never</em> receives your file names, folder
+                  names, phone number, email, or any content — and IP addresses are anonymized.
+                </li>
+                <li>
+                  <strong>Error monitoring</strong> alerts us when something breaks in production so
+                  we can fix it. Reports are scrubbed before they leave your browser: no request
+                  bodies, no cookies, no tokens, no file names — just the technical shape of the
+                  error.
+                </li>
+                <li>
+                  Both are off entirely unless configured, and neither can see anything stored in
+                  your Telegram account.
+                </li>
+              </ul>
+            </div>
+          </details>
+
+          <details>
             <summary>Operational practices</summary>
             <div className="pv-accordion-body">
               <ul>
