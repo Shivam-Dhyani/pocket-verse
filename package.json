@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "docs:check-db": "node scripts/check-db-doc-fresh.mjs",
     "prepare": "husky"
   },
   "devDependencies": {
