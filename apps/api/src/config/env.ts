@@ -41,6 +41,8 @@ const envSchema = z.object({
     .default(8 * 1024 * 1024),
   // Disk staging area for in-flight upload chunks (relative to apps/api).
   STAGING_DIR: z.string().default('.staging'),
+  // Ceiling for one zip download's total content bytes (default 2GB).
+  ZIP_MAX_BYTES: z.coerce.number().int().positive().default(2_000_000_000),
 });
 
 export type Env = z.infer<typeof envSchema>;

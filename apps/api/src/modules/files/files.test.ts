@@ -445,3 +445,85 @@ describe('cancel and retry robustness', () => {
     expect((await api.get(`/api/files/${fileId}`)).body.file.status).toBe('error');
   });
 });
+
+describe('zip downloads and connection reuse', () => {
+  it('downloads a mixed selection as one zip with folder structure preserved', async () => {
+    const { api, queue, app } = await setupConnected();
+    const folder = await api.post('/api/folders', { name: 'Docs' });
+    const folderId = folder.body.folder.id as string;
+    await uploadWhole(api, randomBytes(6), 'loose.bin');
+    await uploadWhole(api, randomBytes(6), 'inside.bin', folderId);
+    await queue.drain();
+
+    const drive = await api.get('/api/drive');
+    const looseId = drive.body.files[0].id as string;
+
+    const minted = await api.post('/api/files/zip-token', {
+      fileIds: [looseId],
+      folderIds: [folderId],
+    });
+    expect(minted.status).toBe(200);
+    expect(minted.body.files).toBe(2);
+
+    const res = await request(app)
+      .get(`/api/files/zip?token=${encodeURIComponent(minted.body.token)}`)
+      .buffer(true)
+      .parse((r, cb) => {
+        const parts: Buffer[] = [];
+        r.on('data', (d: Buffer) => parts.push(d));
+        r.on('end', () => cb(null, Buffer.concat(parts)));
+      });
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toBe('application/zip');
+    const body = res.body as Buffer;
+    expect(body.subarray(0, 2).toString()).toBe('PK'); // zip magic
+    const listing = body.toString('latin1');
+    expect(listing).toContain('loose.bin');
+    expect(listing).toContain('Docs/inside.bin'); // structure preserved
+  });
+
+  it('refuses a selection containing files the user does not own', async () => {
+    const ctx = await setupConnected();
+    const { fileId } = await uploadWhole(ctx.api, randomBytes(6), 'mine.bin');
+    await ctx.queue.drain();
+
+    const stranger = await request(ctx.app)
+      .post('/api/auth/register')
+      .send({ email: 'thief@example.com', password: 'ten-characters-long' });
+    const res = await request(ctx.app)
+      .post('/api/files/zip-token')
+      .set('Authorization', `Bearer ${stranger.body.accessToken}`)
+      .send({ fileIds: [fileId] });
+    expect(res.status).toBe(400); // stranger has no connection → NOT_CONNECTED
+  });
+
+  it('rejects selections beyond the zip size cap with an honest error', async () => {
+    const { api, queue } = await setupConnected({
+      env: { ...SMALL_SIZES, ZIP_MAX_BYTES: 10 },
+    });
+    const { fileId } = await uploadWhole(api, randomBytes(20), 'big.bin');
+    await queue.drain();
+
+    const res = await api.post('/api/files/zip-token', { fileIds: [fileId] });
+    expect(res.status).toBe(413);
+    expect(res.body.error.code).toBe('ZIP_TOO_LARGE');
+  });
+
+  it('reuses ONE connection for all chunks of a download and closes it', async () => {
+    const { api, queue, gatewayCalls } = await setupConnected();
+    const content = randomBytes(20); // 3 chunks with the tiny test sizes
+    const { fileId } = await uploadWhole(api, content);
+    await queue.drain();
+    gatewayCalls.length = 0;
+
+    const download = await api.get(`/api/files/${fileId}/download`).buffer(true);
+    expect(download.status).toBe(200);
+
+    const opens = gatewayCalls.filter((c) => c.method === 'createDownloader').length;
+    const chunks = gatewayCalls.filter((c) => c.method === 'downloadChunk').length;
+    const closes = gatewayCalls.filter((c) => c.method === 'downloaderClose').length;
+    expect(chunks).toBe(3);
+    expect(opens).toBe(1); // one connection for the whole file
+    expect(closes).toBe(1); // and it was released
+  });
+});

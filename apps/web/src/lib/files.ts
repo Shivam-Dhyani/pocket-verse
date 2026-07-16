@@ -54,6 +54,25 @@ export const driveApi = {
 };
 
 /**
+ * Download any selection (files and/or whole folders) as ONE zip through the
+ * browser's native download manager. The server validates the selection when
+ * minting the token, so oversized/empty selections fail here with an honest
+ * message instead of a broken download. Returns how many files are included.
+ */
+export async function downloadZip(fileIds: string[], folderIds: string[]): Promise<number> {
+  const { token, files } = await request<{ token: string; files: number; skipped: number }>(
+    '/api/files/zip-token',
+    { method: 'POST', auth: true, body: { fileIds, folderIds } },
+  );
+  const anchor = document.createElement('a');
+  anchor.href = `${API_URL}/api/files/zip?token=${encodeURIComponent(token)}`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  return files;
+}
+
+/**
  * The path of a file relative to the dropped/picked folder root — set by the
  * folder picker (webkitRelativePath) or react-dropzone (path). Falls back to
  * the bare name for a plain file. Returns { segments: [...dirs], name }.

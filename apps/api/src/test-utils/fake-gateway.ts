@@ -104,22 +104,30 @@ export function createFakeGateway(options: FakeGatewayOptions = {}) {
       args.onProgress?.(1);
       return { messageId };
     },
-    async *downloadChunk(_session, _channel, messageId) {
-      calls.push({ method: 'downloadChunk', args: { messageId } });
-      const bytes = channelStore.get(messageId);
-      if (!bytes) {
-        // Mirror the real gateway's error for a hand-deleted message.
-        throw new AppError(
-          404,
-          'CHUNK_MISSING',
-          'Part of this file is missing from your storage. It may have been deleted there.',
-        );
-      }
-      // Yield in small pieces to exercise real streaming paths.
-      const pieceSize = Math.max(1, Math.ceil(bytes.length / 3));
-      for (let start = 0; start < bytes.length; start += pieceSize) {
-        yield bytes.subarray(start, start + pieceSize);
-      }
+    async createDownloader(_session) {
+      calls.push({ method: 'createDownloader', args: {} });
+      return {
+        async *downloadChunk(_channel, messageId) {
+          calls.push({ method: 'downloadChunk', args: { messageId } });
+          const bytes = channelStore.get(messageId);
+          if (!bytes) {
+            // Mirror the real gateway's error for a hand-deleted message.
+            throw new AppError(
+              404,
+              'CHUNK_MISSING',
+              'Part of this file is missing from your storage. It may have been deleted there.',
+            );
+          }
+          // Yield in small pieces to exercise real streaming paths.
+          const pieceSize = Math.max(1, Math.ceil(bytes.length / 3));
+          for (let start = 0; start < bytes.length; start += pieceSize) {
+            yield bytes.subarray(start, start + pieceSize);
+          }
+        },
+        async close() {
+          calls.push({ method: 'downloaderClose', args: {} });
+        },
+      };
     },
     async deleteMessages(_session, _channel, messageIds) {
       calls.push({ method: 'deleteMessages', args: { messageIds } });

@@ -136,6 +136,7 @@ export function createApp({
       chunkSizeBytes: env.CHUNK_SIZE_BYTES,
       partSizeBytes: env.UPLOAD_PART_SIZE_BYTES,
       stagingDir: env.STAGING_DIR,
+      zipMaxBytes: env.ZIP_MAX_BYTES,
     },
   });
   const foldersService = createFoldersService({

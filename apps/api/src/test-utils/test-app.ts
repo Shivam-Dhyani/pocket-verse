@@ -23,6 +23,7 @@ export const TEST_ENV: Env = {
   REDIS_URL: undefined,
   CHUNK_SIZE_BYTES: 1_500_000_000,
   UPLOAD_PART_SIZE_BYTES: 8 * 1024 * 1024,
+  ZIP_MAX_BYTES: 2_000_000_000,
   STAGING_DIR: path.join(tmpdir(), 'pocketverse-test-staging'),
 };
 

@@ -2,14 +2,14 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import type { FileDto, FolderDto } from '@pocketverse/shared';
 import { track } from '@/lib/analytics';
 import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
-import { downloadFile, driveApi, relativePathOf } from '@/lib/files';
+import { downloadFile, downloadZip, driveApi, relativePathOf } from '@/lib/files';
 import {
   UPLOAD_MAX_FILE_COUNT,
   UPLOAD_SUGGESTED_BATCH,
@@ -40,13 +40,33 @@ import {
   PencilIcon,
   TrashIcon,
   UploadPortal,
+  XIcon,
 } from '@/components/icons';
 
 export default function DrivePage() {
+  // useSearchParams needs a Suspense boundary for static prerendering.
+  return (
+    <Suspense fallback={null}>
+      <DriveInner />
+    </Suspense>
+  );
+}
+
+function DriveInner() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const dialogs = useDialogs();
-  const [folderId, setFolderId] = useState<string | null>(null);
+  // The current folder lives in the URL (?folder=<id>), not component state:
+  // Back walks up exactly the path you navigated, refresh keeps your place,
+  // and locations are bookmarkable — the way a drive should behave.
+  const searchParams = useSearchParams();
+  const folderId = searchParams.get('folder');
+  const openFolder = useCallback(
+    (id: string | null) => {
+      router.push(id ? `/drive?folder=${encodeURIComponent(id)}` : '/drive');
+    },
+    [router],
+  );
   const [error, setError] = useState<string | null>(null);
   // Label of the user action currently in flight ("Deleting…") — drives the
   // floating busy pill so no action ever runs without visible feedback.
@@ -111,21 +131,33 @@ export default function DrivePage() {
     }
   }, [me.isError, router]);
 
-  // Once signed in, the drive is the app's floor — pressing Back would only
-  // fall out of the app (users expect mobile-app behavior here). A guard
-  // history entry catches Back and asks first; leaving mid-upload gets a
-  // stronger warning. In-app navigation (Security, Activity, …) is unaffected.
+  // Every drive history entry (root and each folder) carries a pvGuard stamp,
+  // so the Back handler can tell "moving between folders" (normal, allowed)
+  // from "about to fall out of the app".
+  useEffect(() => {
+    window.history.replaceState({ ...window.history.state, pvGuard: true }, '');
+  }, [folderId]);
+
+  // Once signed in, the drive is the app's floor — pressing Back at the root
+  // would only fall out of the app (users expect mobile-app behavior here).
+  // The entry where the user ENTERED the drive is marked pvBase with a
+  // sentinel pushed above it: Back through folders walks history normally;
+  // Back landing on the base re-arms and asks first — with a stronger warning
+  // while an upload is running. Header navigation is unaffected.
   useEffect(() => {
     if (!(connected || broken)) {
       return;
     }
-    window.history.pushState({ ...window.history.state, pvGuard: true }, '');
+    window.history.replaceState({ ...window.history.state, pvGuard: true, pvBase: true }, '');
+    window.history.pushState({ ...window.history.state, pvBase: false }, '');
+
     const onPop = (event: PopStateEvent) => {
-      if ((event.state as { pvGuard?: boolean } | null)?.pvGuard) {
-        return; // returned from a forward page onto the guard — normal back-nav
+      const state = event.state as { pvGuard?: boolean; pvBase?: boolean } | null;
+      if (!state?.pvBase) {
+        return; // folder-to-folder or forward-page back-nav — let it happen
       }
-      // Re-arm immediately so the page stays put while we ask.
-      window.history.pushState({ ...window.history.state, pvGuard: true }, '');
+      // We're on the floor: push a fresh sentinel so the page stays put, ask.
+      window.history.pushState({ ...window.history.state, pvBase: false }, '');
       const uploading = Object.values(useUploadsStore.getState().uploads).some(
         (entry) => entry.state === 'uploading' || entry.state === 'paused',
       );
@@ -142,7 +174,7 @@ export default function DrivePage() {
         .then((ok) => {
           if (ok) {
             window.removeEventListener('popstate', onPop);
-            window.history.go(-2); // past both guard entries, out of the app
+            window.history.go(-2); // past the sentinel and the base — out
           }
         });
     };
@@ -299,6 +331,69 @@ export default function DrivePage() {
     },
     [folderId, refresh, dialogs],
   );
+
+  // Multi-select: any mix of files and folders, acted on together.
+  const [selFiles, setSelFiles] = useState<ReadonlySet<string>>(new Set());
+  const [selFolders, setSelFolders] = useState<ReadonlySet<string>>(new Set());
+  const selectionCount = selFiles.size + selFolders.size;
+  const clearSelection = useCallback(() => {
+    setSelFiles(new Set());
+    setSelFolders(new Set());
+  }, []);
+  useEffect(() => clearSelection(), [folderId, clearSelection]);
+  const toggleIn = (set: ReadonlySet<string>, id: string): Set<string> => {
+    const next = new Set(set);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    return next;
+  };
+  const toggleFile = (id: string) => setSelFiles((prev) => toggleIn(prev, id));
+  const toggleFolder = (id: string) => setSelFolders((prev) => toggleIn(prev, id));
+
+  async function deleteSelected() {
+    const ok = await dialogs.confirm({
+      title: `Delete ${selectionCount} ${selectionCount === 1 ? 'item' : 'items'}?`,
+      message:
+        'Everything selected — including folder contents — is deleted from Pocketverse and from your Telegram storage.',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!ok) {
+      return;
+    }
+    setError(null);
+    setBusy(`Deleting ${selectionCount} ${selectionCount === 1 ? 'item' : 'items'}…`);
+    try {
+      for (const id of selFiles) {
+        await driveApi.deleteFile(id);
+      }
+      for (const id of selFolders) {
+        await driveApi.deleteFolder(id);
+      }
+      clearSelection();
+      await refresh();
+    } catch (err) {
+      onError(err);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function downloadSelected(fileIds: string[], folderIds: string[]) {
+    setError(null);
+    setBusy('Preparing your download…');
+    try {
+      await downloadZip(fileIds, folderIds);
+      clearSelection();
+    } catch (err) {
+      onError(err);
+    } finally {
+      setBusy(null);
+    }
+  }
 
   const onDrop = useCallback((accepted: File[]) => void ingest(accepted), [ingest]);
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
@@ -472,7 +567,7 @@ export default function DrivePage() {
           )}
 
           <div className="pv-drive-toolbar">
-            <Breadcrumb breadcrumb={drive.data?.breadcrumb ?? []} onNavigate={setFolderId} />
+            <Breadcrumb breadcrumb={drive.data?.breadcrumb ?? []} onNavigate={openFolder} />
             <div className="pv-menu-wrap">
               <button
                 className="pv-button"
@@ -558,6 +653,37 @@ export default function DrivePage() {
             </span>
           </div>
 
+          {selectionCount > 0 && (
+            <div className="pv-selectbar" role="toolbar" aria-label="Selection actions">
+              <span className="pv-selectbar-count">{selectionCount} selected</span>
+              <button
+                className="pv-button pv-button--ghost"
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void downloadSelected([...selFiles], [...selFolders])}
+              >
+                <DownloadIcon width={15} height={15} /> Download
+              </button>
+              <button
+                className="pv-button pv-button--ghost"
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void deleteSelected()}
+              >
+                <TrashIcon width={15} height={15} /> Delete
+              </button>
+              <button
+                className="pv-iconbtn"
+                type="button"
+                title="Clear selection"
+                aria-label="Clear selection"
+                onClick={clearSelection}
+              >
+                <XIcon width={15} height={15} />
+              </button>
+            </div>
+          )}
+
           {drive.data?.currentFolder && (
             <div className="pv-folder-meta">
               <FolderIcon width={14} height={14} />
@@ -606,13 +732,18 @@ export default function DrivePage() {
               const viewProps: ViewProps = {
                 folders: visibleFolders,
                 files: visibleFiles,
-                onOpenFolder: setFolderId,
+                selectedFiles: selFiles,
+                selectedFolders: selFolders,
+                onToggleFile: toggleFile,
+                onToggleFolder: toggleFolder,
+                onOpenFolder: openFolder,
                 onOpenFile: openFile,
                 onMove: setMoving,
                 onRenameFile: renameFile,
                 onDeleteFile: deleteFile,
                 onRenameFolder: renameFolder,
                 onDeleteFolder: deleteFolder,
+                onDownloadFolder: (folder) => void downloadSelected([], [folder.id]),
               };
               return view === 'grid' ? <GridView {...viewProps} /> : <ListView {...viewProps} />;
             })()
@@ -666,6 +797,10 @@ function Breadcrumb({
 interface ViewProps {
   folders: FolderDto[];
   files: FileDto[];
+  selectedFiles: ReadonlySet<string>;
+  selectedFolders: ReadonlySet<string>;
+  onToggleFile: (id: string) => void;
+  onToggleFolder: (id: string) => void;
   onOpenFolder: (id: string) => void;
   onOpenFile: (file: FileDto) => void;
   onMove: (file: FileDto) => void;
@@ -673,6 +808,24 @@ interface ViewProps {
   onDeleteFile: (file: FileDto) => void;
   onRenameFolder: (folder: FolderDto) => void;
   onDeleteFolder: (folder: FolderDto) => void;
+  onDownloadFolder: (folder: FolderDto) => void;
+}
+
+/** Row/card checkbox — stops propagation so selecting never opens the item. */
+function SelectBox({
+  checked,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <label className="pv-select-box" onClick={(event) => event.stopPropagation()}>
+      <input type="checkbox" checked={checked} aria-label={label} onChange={onToggle} />
+    </label>
+  );
 }
 
 function fileActions(file: FileDto, props: ViewProps) {
@@ -718,6 +871,14 @@ function folderActions(folder: FolderDto, props: ViewProps) {
       <button
         className="pv-iconbtn"
         type="button"
+        title="Download as zip"
+        onClick={() => props.onDownloadFolder(folder)}
+      >
+        <DownloadIcon width={16} height={16} />
+      </button>
+      <button
+        className="pv-iconbtn"
+        type="button"
         title="Rename"
         onClick={() => props.onRenameFolder(folder)}
       >
@@ -741,9 +902,14 @@ function ListView(props: ViewProps) {
       {props.folders.map((folder) => (
         <li
           key={folder.id}
-          className="pv-row pv-row--clickable"
+          className={`pv-row pv-row--clickable${props.selectedFolders.has(folder.id) ? ' selected' : ''}`}
           onClick={() => props.onOpenFolder(folder.id)}
         >
+          <SelectBox
+            checked={props.selectedFolders.has(folder.id)}
+            label={`Select ${folder.name}`}
+            onToggle={() => props.onToggleFolder(folder.id)}
+          />
           <span className="pv-row-icon">
             <FolderIcon />
           </span>
@@ -760,9 +926,14 @@ function ListView(props: ViewProps) {
         return (
           <li
             key={file.id}
-            className={`pv-row${clickable ? ' pv-row--clickable' : ''}`}
+            className={`pv-row${clickable ? ' pv-row--clickable' : ''}${props.selectedFiles.has(file.id) ? ' selected' : ''}`}
             onClick={clickable ? () => props.onOpenFile(file) : undefined}
           >
+            <SelectBox
+              checked={props.selectedFiles.has(file.id)}
+              label={`Select ${file.name}`}
+              onToggle={() => props.onToggleFile(file.id)}
+            />
             <span className="pv-row-icon">
               <Icon />
             </span>
@@ -790,9 +961,14 @@ function GridView(props: ViewProps) {
       {props.folders.map((folder) => (
         <div
           key={folder.id}
-          className="pv-grid-card pv-row--clickable"
+          className={`pv-grid-card pv-row--clickable${props.selectedFolders.has(folder.id) ? ' selected' : ''}`}
           onClick={() => props.onOpenFolder(folder.id)}
         >
+          <SelectBox
+            checked={props.selectedFolders.has(folder.id)}
+            label={`Select ${folder.name}`}
+            onToggle={() => props.onToggleFolder(folder.id)}
+          />
           <span className="pv-row-icon">
             <FolderIcon width={26} height={26} />
           </span>
@@ -808,9 +984,14 @@ function GridView(props: ViewProps) {
         return (
           <div
             key={file.id}
-            className={`pv-grid-card${clickable ? ' pv-row--clickable' : ''}`}
+            className={`pv-grid-card${clickable ? ' pv-row--clickable' : ''}${props.selectedFiles.has(file.id) ? ' selected' : ''}`}
             onClick={clickable ? () => props.onOpenFile(file) : undefined}
           >
+            <SelectBox
+              checked={props.selectedFiles.has(file.id)}
+              label={`Select ${file.name}`}
+              onToggle={() => props.onToggleFile(file.id)}
+            />
             <span className="pv-row-icon">
               <Icon width={26} height={26} />
             </span>

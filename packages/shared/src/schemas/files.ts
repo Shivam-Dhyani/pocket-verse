@@ -49,6 +49,19 @@ export const updateFolderSchema = z
     'Provide a new name or a destination folder',
   );
 
+/** A multi-select zip download: any mix of files and whole folders. */
+export const zipRequestSchema = z
+  .object({
+    fileIds: z.array(z.string()).max(500).default([]),
+    folderIds: z.array(z.string()).max(100).default([]),
+  })
+  .refine(
+    (value) => value.fileIds.length > 0 || value.folderIds.length > 0,
+    'Select at least one file or folder',
+  );
+
+export type ZipRequestInput = z.infer<typeof zipRequestSchema>;
+
 /** Get-or-create a nested folder path (for uploading whole folder trees). */
 export const ensureFolderPathSchema = z.object({
   parentId: z.string().nullish(),

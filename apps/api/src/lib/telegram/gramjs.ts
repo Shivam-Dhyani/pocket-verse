@@ -189,41 +189,56 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
       }
     },
 
-    async *downloadChunk(
-      session: string,
-      channel: StorageChannelInfo,
-      messageId: string,
-    ): AsyncIterable<Buffer> {
+    async createDownloader(session: string) {
+      // ONE connection for the whole download — connect (and handshake) once,
+      // then every chunk of every file rides the same client. close() is the
+      // caller's responsibility, success or failure.
       const client = newClient(session);
       try {
-        // Connect + locate the message under the standard timeout…
-        const media = await withTimeout(async () => {
-          await client.connect();
-          const [message] = await client.getMessages(channelPeer(channel), {
-            ids: [Number(messageId)],
-          });
-          if (!message?.media) {
-            throw new AppError(
-              404,
-              'CHUNK_MISSING',
-              'Part of this file is missing from your storage. It may have been deleted there.',
-            );
-          }
-          return message.media;
-        });
-
-        // …then stream without a fixed ceiling — size is unbounded.
-        for await (const piece of client.iterDownload({
-          file: media,
-          requestSize: 512 * 1024,
-        })) {
-          yield piece as Buffer;
-        }
+        await withTimeout(async () => client.connect());
       } catch (error) {
-        throw mapTelegramError(error);
-      } finally {
         void client.destroy().catch(() => undefined);
+        throw mapTelegramError(error);
       }
+
+      return {
+        async *downloadChunk(
+          channel: StorageChannelInfo,
+          messageId: string,
+        ): AsyncIterable<Buffer> {
+          try {
+            // Locate the message under the standard timeout…
+            const media = await withTimeout(() =>
+              withFloodWait(async () => {
+                const [message] = await client.getMessages(channelPeer(channel), {
+                  ids: [Number(messageId)],
+                });
+                if (!message?.media) {
+                  throw new AppError(
+                    404,
+                    'CHUNK_MISSING',
+                    'Part of this file is missing from your storage. It may have been deleted there.',
+                  );
+                }
+                return message.media;
+              }),
+            );
+
+            // …then stream without a fixed ceiling — size is unbounded.
+            for await (const piece of client.iterDownload({
+              file: media,
+              requestSize: 512 * 1024,
+            })) {
+              yield piece as Buffer;
+            }
+          } catch (error) {
+            throw mapTelegramError(error);
+          }
+        },
+        async close() {
+          await client.destroy().catch(() => undefined);
+        },
+      };
     },
 
     async deleteMessages(

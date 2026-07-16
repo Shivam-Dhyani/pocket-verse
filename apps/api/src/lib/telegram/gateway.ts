@@ -29,6 +29,13 @@ export interface UploadFileArgs {
   onProgress?: (fraction: number) => void;
 }
 
+/** A live download connection; see TelegramGateway.createDownloader. */
+export interface Downloader {
+  /** Streams one chunk's bytes over the shared connection. */
+  downloadChunk(channel: StorageChannelInfo, messageId: string): AsyncIterable<Buffer>;
+  close(): Promise<void>;
+}
+
 export interface TelegramGateway {
   /** @throws AppError (mapped) on RPC failure */
   sendCode(phone: string): Promise<SendCodeResult>;
@@ -50,12 +57,13 @@ export interface TelegramGateway {
     channel: StorageChannelInfo,
     args: UploadFileArgs,
   ): Promise<{ messageId: string }>;
-  /** Streams one chunk's bytes back; the iterable owns the connection. */
-  downloadChunk(
-    session: string,
-    channel: StorageChannelInfo,
-    messageId: string,
-  ): AsyncIterable<Buffer>;
+  /**
+   * Opens ONE connection for a whole download (single file or zip of many)
+   * and streams chunks over it. Reusing the connection skips a full
+   * connect + handshake per chunk — the dominant dead time on multi-chunk
+   * files. Callers MUST close() when done (success or failure).
+   */
+  createDownloader(session: string): Promise<Downloader>;
   /** Deletes chunk messages for all members; reports how many really went. */
   deleteMessages(
     session: string,

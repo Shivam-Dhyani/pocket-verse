@@ -1,6 +1,8 @@
 import { once } from 'node:events';
+import { ZipArchive } from 'archiver';
+import { Readable } from 'node:stream';
 import { Router, type Request, type RequestHandler, type Response } from 'express';
-import { createUploadSchema, updateFileSchema } from '@pocketverse/shared';
+import { createUploadSchema, updateFileSchema, zipRequestSchema } from '@pocketverse/shared';
 import type { JwtHelpers } from '../../lib/jwt.js';
 import { requireAuth } from '../../middleware/auth.js';
 import { validateBody } from '../../middleware/validate.js';
@@ -73,7 +75,73 @@ export function createFilesRouter(
     await streamToResponse(stream, req, res);
   });
 
+  // Token-authenticated navigation (like single downloads): streams a zip of
+  // the selection the token was minted for. Registered before the bearer guard.
+  router.get('/zip', async (req, res) => {
+    const raw = typeof req.query.token === 'string' ? req.query.token : '';
+    let claims: { sub: string; fileIds: string[]; folderIds: string[] };
+    try {
+      claims = await jwt.verifyZipToken(raw);
+    } catch {
+      res.status(401).json({
+        error: {
+          code: 'DOWNLOAD_LINK_EXPIRED',
+          message: 'This download link expired. Go back to your drive and download again.',
+        },
+      });
+      return;
+    }
+
+    const zip = await service.prepareZip(claims.sub, claims.fileIds, claims.folderIds);
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(`pocketverse-${stamp}.zip`)}`,
+    );
+
+    // STORE mode (no compression): media barely compresses, and skipping
+    // deflate keeps CPU near zero on the free tier. The archive streams —
+    // nothing is buffered beyond transport pieces.
+    const archive = new ZipArchive({ store: true });
+    archive.on('error', (error: Error) => {
+      void zip.onError(error);
+      res.destroy(error);
+    });
+    res.on('close', () => {
+      void zip.close();
+      archive.destroy();
+    });
+    archive.pipe(res);
+
+    try {
+      // Entries are appended strictly one at a time: archiver reads each
+      // source fully before writing the next header, and a single in-flight
+      // source keeps memory flat.
+      for (const entry of zip.entries) {
+        archive.append(Readable.from(zip.streamEntry(entry)), { name: entry.path });
+      }
+      await archive.finalize();
+    } catch (error) {
+      void zip.onError(error);
+      res.destroy(error as Error);
+    } finally {
+      await zip.close();
+    }
+  });
+
   router.use(requireAuth(jwt));
+
+  // Mint the short-lived token that authorizes GET /zip as plain navigation.
+  router.post('/zip-token', validateBody(zipRequestSchema), async (req, res) => {
+    const { fileIds, folderIds } = req.body as { fileIds: string[]; folderIds: string[] };
+    // Validate the selection now (ownership, readiness, size cap) so the user
+    // gets an honest error in-app instead of a broken navigation download.
+    const zip = await service.prepareZip(req.user!.id, fileIds, folderIds);
+    await zip.close(); // validation only — the GET streams for real
+    const token = await jwt.signZipToken(req.user!.id, fileIds, folderIds);
+    res.json({ token, files: zip.entries.length, skipped: zip.skipped });
+  });
 
   router.get('/search', async (req, res) => {
     const query = typeof req.query.q === 'string' ? req.query.q : '';

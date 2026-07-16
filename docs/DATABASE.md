@@ -3,7 +3,7 @@
   Regenerate/update whenever apps/api/prisma/schema.prisma OR any API route
   changes. See "Maintaining this document" at the bottom, or run the
   `db-architecture-doc` skill (.claude/skills/db-architecture-doc).
-  Last verified against schema + routes: 2026-07 (Phase 5).
+  Last verified against schema + routes: 2026-07 (Phase 5 + zip downloads).
 -->
 
 # Pocketverse — Database & Backend Architecture
@@ -195,6 +195,7 @@ Constraints: `@@unique([ownerId, parentId, name])` (no dup names in a folder),
 | `DELETE /api/folders/:id`               | `folders.service.deleteFolder`        | recursive delete (+ audit tree)                  |
 | `DELETE /api/folders/:id?onlyIfEmpty=1` | `folders.service.deleteFolderIfEmpty` | delete only if no files (cancel cleanup)         |
 | `GET /api/drive`                        | `folders.service.listDrive`           | reads (listing + subtree size)                   |
+| `GET /api/files/zip?token=`             | `files.service.prepareZip`            | reads subtrees to mirror structure in zip        |
 | `GET /api/stats`                        | stats router                          | counts folders                                   |
 
 ---
@@ -225,6 +226,8 @@ Indexes: `@@index([ownerId, folderId])`, `@@index([ownerId, name])` (search).
 | `GET /api/files/:id`                 | `files.service.getFile`      | reads                                   |
 | `GET /api/files/search?q=`           | `files.service.search`       | reads by name                           |
 | `GET /api/files/:id/download`        | `files.service.download`     | reads; marks `ERROR` if a chunk is gone |
+| `POST /api/files/zip-token`          | `files.service.prepareZip`   | reads (validates selection + size cap)  |
+| `GET /api/files/zip?token=`          | `files.service.prepareZip`   | reads; streams the selection as one zip |
 | `POST /api/files/:id/download-token` | `files.service.getFile`      | reads (ownership)                       |
 | `PATCH /api/files/:id`               | `files.service.updateFile`   | rename/move                             |
 | `DELETE /api/files/:id`              | `files.service.deleteFile`   | deletes (+ storage cleanup)             |
@@ -260,6 +263,7 @@ Constraint: `@@unique([fileId, index])`.
 | `PUT /api/files/uploads/:id/parts/:index` | `files.service.uploadPart`   | records checksum; enqueues `chunk-upload`                            |
 | `POST /api/files/retry-failed`            | `files.service.retryFailed`  | resets non-uploaded chunks to `PENDING`                              |
 | `GET /api/drive`, `GET /api/files/:id`    | listing / getFile            | reads (status + progress)                                            |
+| `GET /api/files/zip?token=`               | `files.service.prepareZip`   | reads ordered chunks per zip entry                                   |
 | _(worker)_ `chunk-upload`                 | `storage.worker`             | UPLOADING → UPLOADED (+ `telegramMessageId`); orphan check on cancel |
 
 ---
@@ -353,6 +357,10 @@ How the tables are used **together**. Each step notes the table(s) it hits.
 
 ### 4. Download
 
+Zip: `POST /api/files/zip-token` validates a selection (files + folder
+subtrees, ownership + size cap) and mints a short-lived token;
+`GET /api/files/zip?token=` re-resolves it and streams every entry over ONE
+storage connection as a store-mode zip. Single file:
 `GET /api/files/:id/download` (bearer or short-lived token) → read **File** +
 ordered **FileChunk** rows → stream each chunk's message from the channel. A
 missing message → **File** `ERROR` + audit `file.unreachable`; a revoked

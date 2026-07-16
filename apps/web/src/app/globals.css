@@ -1584,3 +1584,82 @@ button {
   font-weight: 700;
   letter-spacing: 0.5px;
 }
+
+/* Multi-select: toolbar, row/card checkboxes, selected highlight. */
+.pv-selectbar {
+  display: flex;
+  align-items: center;
+  gap: var(--pv-s2);
+  padding: var(--pv-s2) var(--pv-s4);
+  margin-bottom: var(--pv-s4);
+  border: 1px solid color-mix(in srgb, var(--pv-accent) 45%, var(--pv-border));
+  border-radius: var(--pv-radius);
+  background: color-mix(in srgb, var(--pv-accent) 8%, var(--pv-surface));
+}
+
+.pv-selectbar-count {
+  font-size: var(--pv-text-sm);
+  font-weight: 600;
+  margin-right: var(--pv-s2);
+}
+
+.pv-selectbar .pv-iconbtn {
+  margin-left: auto;
+}
+
+.pv-select-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  cursor: pointer;
+  /* Hidden until the row is hovered or anything is selected — Drive-style. */
+  opacity: 0;
+  transition: opacity var(--pv-fast);
+}
+
+.pv-select-box input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--pv-accent);
+  cursor: pointer;
+}
+
+.pv-row:hover .pv-select-box,
+.pv-grid-card:hover .pv-select-box,
+.pv-row.selected .pv-select-box,
+.pv-grid-card.selected .pv-select-box,
+.pv-select-box:focus-within {
+  opacity: 1;
+}
+
+/* While a selection exists, every checkbox stays visible for fast multi-pick. */
+.pv-list:has(.selected) .pv-select-box,
+.pv-grid:has(.selected) .pv-select-box {
+  opacity: 1;
+}
+
+.pv-row.selected,
+.pv-grid-card.selected {
+  background: color-mix(in srgb, var(--pv-accent) 10%, transparent);
+  border-color: var(--pv-accent);
+}
+
+/* Grid cards: pin the checkbox to the top-left corner. */
+.pv-grid-card {
+  position: relative;
+}
+
+.pv-grid-card .pv-select-box {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+}
+
+@media (pointer: coarse) {
+  .pv-select-box {
+    opacity: 1; /* no hover on touch — always visible */
+  }
+}

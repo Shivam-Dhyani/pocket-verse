@@ -30,6 +30,8 @@ export interface FilesServiceConfig {
   chunkSizeBytes: number;
   partSizeBytes: number;
   stagingDir: string;
+  /** Ceiling for one zip download's total content bytes. */
+  zipMaxBytes: number;
 }
 
 export interface FilesServiceDeps {
@@ -343,48 +345,127 @@ export function createFilesService({
       const { name: fileName, size: fileSize } = file;
 
       async function* stream(): AsyncIterable<Buffer> {
-        for (const chunk of chunks) {
-          if (!chunk.telegramMessageId) {
-            throw new AppError(500, 'INTERNAL', 'File metadata is inconsistent.');
-          }
-          try {
-            yield* gateway.downloadChunk(session, channel, chunk.telegramMessageId);
-          } catch (error) {
-            // The message backing this chunk was deleted in the user's storage
-            // (by hand, or the channel itself was removed). Mark the file and
-            // write the loss to the activity log so the user can always see
-            // exactly what was lost and when.
-            if (error instanceof AppError && error.code === 'CHUNK_MISSING') {
-              await prisma.file
-                .update({ where: { id: fileId }, data: { status: 'ERROR' } })
-                .catch(() => undefined);
-              await audit.record(userId, AuditEventTypes.FILE_UNREACHABLE, {
-                fileId,
-                name: fileName,
-                size: Number(fileSize),
-              });
+        // ONE connection for all chunks of this file (see createDownloader).
+        const downloader = await gateway.createDownloader(session);
+        try {
+          for (const chunk of chunks) {
+            if (!chunk.telegramMessageId) {
+              throw new AppError(500, 'INTERNAL', 'File metadata is inconsistent.');
             }
-            // The user ended Pocketverse's session from inside Telegram: flag
-            // the connection right here so the drive shows the reconnect
-            // banner on the very next status poll — not only after a slow
-            // upload-retry cycle finally exhausts.
-            if (error instanceof AppError && error.code === 'SESSION_REVOKED') {
-              const flagged = await prisma.storageConnection
-                .updateMany({
-                  where: { userId, status: 'CONNECTED' },
-                  data: { status: 'ERROR', lastCheckedAt: new Date(), lastError: error.message },
-                })
-                .catch(() => ({ count: 0 }));
-              if (flagged.count > 0) {
-                await audit.record(userId, AuditEventTypes.CONNECTION_SESSION_REVOKED);
-              }
-            }
-            throw error;
+            yield* downloader.downloadChunk(channel, chunk.telegramMessageId);
           }
+        } catch (error) {
+          await recordDownloadFailure(userId, error, {
+            fileId,
+            name: fileName,
+            size: Number(fileSize),
+          });
+          throw error;
+        } finally {
+          await downloader.close();
         }
       }
 
       return { file: toFileDto(file), size: file.size, stream: stream() };
+    },
+
+    /**
+     * Resolve a selection (files and/or folder subtrees) into zip entries with
+     * relative paths, enforcing ownership and the size cap. The actual archive
+     * is assembled by the route (it owns the response stream); this returns
+     * ready-to-stream entries plus one shared downloader.
+     */
+    async prepareZip(userId: string, fileIds: string[], folderIds: string[]) {
+      const connection = await requireConnected(userId);
+      const session = decryptConnectionSession(connection, keyring);
+      const channel = requireChannel(connection);
+
+      interface ZipEntry {
+        path: string;
+        chunks: { telegramMessageId: string | null }[];
+      }
+      const entries: ZipEntry[] = [];
+      let totalBytes = 0n;
+      let skipped = 0;
+
+      const addFile = (
+        file: { name: string; size: bigint; status: string; chunks: ZipEntry['chunks'] },
+        prefix: string,
+      ) => {
+        if (file.status !== 'READY') {
+          skipped += 1; // still uploading or failed — not downloadable
+          return;
+        }
+        totalBytes += file.size;
+        entries.push({ path: `${prefix}${file.name}`, chunks: file.chunks });
+      };
+
+      for (const id of [...new Set(fileIds)]) {
+        const file = await prisma.file.findUnique({
+          where: { id },
+          include: { chunks: { orderBy: { index: 'asc' } } },
+        });
+        if (!file || file.ownerId !== userId) {
+          throw notFound();
+        }
+        addFile(file, '');
+      }
+
+      // Folders: walk each subtree and mirror its structure inside the zip.
+      for (const id of [...new Set(folderIds)]) {
+        const root = await prisma.folder.findUnique({ where: { id } });
+        if (!root || root.ownerId !== userId) {
+          throw notFound();
+        }
+        const prefixes = new Map<string, string>([[root.id, `${root.name}/`]]);
+        let frontier = [root.id];
+        while (frontier.length > 0) {
+          const children = await prisma.folder.findMany({
+            where: { ownerId: userId, parentId: { in: frontier } },
+            select: { id: true, name: true, parentId: true },
+          });
+          for (const child of children) {
+            prefixes.set(child.id, `${prefixes.get(child.parentId!) ?? ''}${child.name}/`);
+          }
+          frontier = children.map((child) => child.id);
+        }
+        const files = await prisma.file.findMany({
+          where: { ownerId: userId, folderId: { in: [...prefixes.keys()] } },
+          include: { chunks: { orderBy: { index: 'asc' } } },
+        });
+        for (const file of files) {
+          addFile(file, prefixes.get(file.folderId!) ?? '');
+        }
+      }
+
+      if (entries.length === 0) {
+        throw new AppError(400, 'ZIP_EMPTY', 'Nothing in this selection is ready to download yet.');
+      }
+      if (totalBytes > BigInt(config.zipMaxBytes)) {
+        throw new AppError(
+          413,
+          'ZIP_TOO_LARGE',
+          'This selection is too large for a single download. Download it in smaller parts.',
+        );
+      }
+
+      const downloader = await gateway.createDownloader(session);
+      return {
+        entries,
+        totalBytes,
+        skipped,
+        streamEntry: (entry: ZipEntry) =>
+          (async function* () {
+            for (const chunk of entry.chunks) {
+              if (!chunk.telegramMessageId) {
+                throw new AppError(500, 'INTERNAL', 'File metadata is inconsistent.');
+              }
+              yield* downloader.downloadChunk(channel, chunk.telegramMessageId);
+            }
+          })(),
+        onError: (error: unknown) => recordDownloadFailure(userId, error, null),
+        close: () => downloader.close(),
+      };
     },
 
     async updateFile(userId: string, fileId: string, input: UpdateFileInput): Promise<FileDto> {
@@ -469,6 +550,35 @@ export function createFilesService({
       return { retried, unrecoverable };
     },
   };
+
+  /**
+   * Shared bookkeeping for a failed download stream: a missing message means
+   * the file was deleted inside Telegram (mark it lost + log it); a revoked
+   * session flags the connection so the drive shows the reconnect banner.
+   */
+  async function recordDownloadFailure(
+    userId: string,
+    error: unknown,
+    lostFile: { fileId: string; name: string; size: number } | null,
+  ): Promise<void> {
+    if (error instanceof AppError && error.code === 'CHUNK_MISSING' && lostFile) {
+      await prisma.file
+        .update({ where: { id: lostFile.fileId }, data: { status: 'ERROR' } })
+        .catch(() => undefined);
+      await audit.record(userId, AuditEventTypes.FILE_UNREACHABLE, { ...lostFile });
+    }
+    if (error instanceof AppError && error.code === 'SESSION_REVOKED') {
+      const flagged = await prisma.storageConnection
+        .updateMany({
+          where: { userId, status: 'CONNECTED' },
+          data: { status: 'ERROR', lastCheckedAt: new Date(), lastError: error.message },
+        })
+        .catch(() => ({ count: 0 }));
+      if (flagged.count > 0) {
+        await audit.record(userId, AuditEventTypes.CONNECTION_SESSION_REVOKED);
+      }
+    }
+  }
 
   async function removeFileEverywhere(
     fileId: string,

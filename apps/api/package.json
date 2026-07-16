@@ -20,6 +20,7 @@
     "@pocketverse/shared": "workspace:*",
     "@prisma/client": "^6.3.0",
     "@sentry/node": "^10.65.0",
+    "archiver": "^8.0.0",
     "argon2": "^0.44.0",
     "big-integer": "^1.6.52",
     "bullmq": "^5.79.3",
@@ -34,6 +35,7 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/cookie-parser": "^1.4.8",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
