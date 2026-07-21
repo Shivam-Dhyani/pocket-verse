@@ -163,17 +163,48 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
       }
       const folderIds = [...subtree.keys()];
 
-      const files = await prisma.file.findMany({
-        where: { ownerId: userId, folderId: { in: folderIds } },
-        include: { chunks: { select: { telegramMessageId: true } } },
-      });
+      // Gather the Telegram message ids to clean up, and a capped sample of
+      // files for the audit tree — BEFORE deleting, and leanly (select only
+      // what's needed; the tree caps at a few hundred entries regardless).
+      const [chunkRows, treeFiles, fileCount] = await Promise.all([
+        prisma.fileChunk.findMany({
+          where: { file: { ownerId: userId, folderId: { in: folderIds } } },
+          select: { telegramMessageId: true },
+        }),
+        prisma.file.findMany({
+          where: { ownerId: userId, folderId: { in: folderIds } },
+          select: { name: true, folderId: true },
+          take: 300,
+        }),
+        prisma.file.count({ where: { ownerId: userId, folderId: { in: folderIds } } }),
+      ]);
 
-      // Metadata first (DB cascade removes descendants, files, chunks,
-      // sessions), then storage-side cleanup through the queue.
-      await prisma.folder.delete({ where: { id: folderId } });
+      // Delete files in BOUNDED batches rather than one giant cascade
+      // statement. A single cascade over a large tree holds locks and runs for
+      // minutes over a remote DB; small deleteMany batches each finish fast and
+      // never block. Each file delete cascades its own chunks + session.
+      for (;;) {
+        const batch = await prisma.file.findMany({
+          where: { ownerId: userId, folderId: { in: folderIds } },
+          select: { id: true },
+          take: DELETE_BATCH_SIZE,
+        });
+        if (batch.length === 0) {
+          break;
+        }
+        const ids = batch.map((file) => file.id);
+        await prisma.file.deleteMany({ where: { id: { in: ids } } });
+        // Staging (only present for still-uploading files) — best-effort.
+        await Promise.all(
+          ids.map((id) => rm(path.join(stagingDir, id), { recursive: true, force: true })),
+        );
+      }
 
-      const messageIds = files
-        .flatMap((file) => file.chunks.map((chunk) => chunk.telegramMessageId))
+      // Files gone → folders now delete instantly (nothing heavy cascades).
+      await prisma.folder.deleteMany({ where: { id: { in: folderIds } } });
+
+      const messageIds = chunkRows
+        .map((chunk) => chunk.telegramMessageId)
         .filter((id): id is string => Boolean(id));
       for (let start = 0; start < messageIds.length; start += DELETE_BATCH_SIZE) {
         await queue.enqueue('messages-delete', {
@@ -181,24 +212,17 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
           messageIds: messageIds.slice(start, start + DELETE_BATCH_SIZE),
         });
       }
-      await Promise.all(
-        files.map((file) => rm(path.join(stagingDir, file.id), { recursive: true, force: true })),
-      );
 
       // The activity log shows WHAT was deleted: the folder's name plus a
-      // nested (capped) tree of everything inside it.
-      const { tree, truncated } = buildDeletedTree(
-        folderId,
-        subtree,
-        files.map((file) => ({ name: file.name, folderId: file.folderId })),
-      );
+      // nested (capped) tree of what was inside it.
+      const { tree, truncated: treeTruncated } = buildDeletedTree(folderId, subtree, treeFiles);
       await audit.record(userId, AuditEventTypes.FOLDER_DELETED, {
         folderId,
         name: root.name,
         folders: folderIds.length,
-        files: files.length,
+        files: fileCount,
         tree,
-        ...(truncated ? { truncated: true } : {}),
+        ...(treeTruncated || fileCount > treeFiles.length ? { truncated: true } : {}),
       });
     },
 

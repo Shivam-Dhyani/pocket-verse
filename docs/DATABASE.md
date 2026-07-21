@@ -3,7 +3,7 @@
   Regenerate/update whenever apps/api/prisma/schema.prisma OR any API route
   changes. See "Maintaining this document" at the bottom, or run the
   `db-architecture-doc` skill (.claude/skills/db-architecture-doc).
-  Last verified against schema + routes: 2026-07 (Phase 5 + zip downloads).
+  Last verified against schema + routes: 2026-07 (Phase 5 + zip + batched folder delete).
 -->
 
 # Pocketverse — Database & Backend Architecture
@@ -379,8 +379,10 @@ created folders via `DELETE /api/folders/:id?onlyIfEmpty=1`.
   **UploadSession**) → enqueue `messages-delete` for the channel messages →
   audit `file.deleted`.
 - `DELETE /api/folders/:id` → gather subtree (**Folder** + **File** +
-  **FileChunk**) → delete root **Folder** (DB cascade) → enqueue
-  `messages-delete` → audit `folder.deleted` with a nested contents tree.
+  **FileChunk**) → delete **File** rows in bounded batches (each cascades its
+  chunks + session; avoids one giant locking cascade) → delete the **Folder**
+  rows → enqueue `messages-delete` → audit `folder.deleted` with a nested
+  contents tree.
 
 ### 7. Disconnect
 

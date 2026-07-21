@@ -498,9 +498,13 @@ export function createFakePrisma() {
         deleteFolderCascade(where.id);
         return { ...row };
       },
-      deleteMany: async ({ where }: { where: { ownerId: string } }) => {
+      deleteMany: async ({ where }: { where: { ownerId?: string; id?: { in: string[] } } }) => {
         const ids = [...folders.values()]
-          .filter((f) => f.ownerId === where.ownerId)
+          .filter(
+            (f) =>
+              (where.ownerId === undefined || f.ownerId === where.ownerId) &&
+              (where.id === undefined || where.id.in.includes(f.id)),
+          )
           .map((f) => f.id);
         for (const id of ids) {
           folders.delete(id);
@@ -657,8 +661,14 @@ export function createFakePrisma() {
         deleteFileCascade(where.id);
         return { ...row };
       },
-      deleteMany: async ({ where }: { where: { ownerId: string } }) => {
-        const ids = [...files.values()].filter((f) => f.ownerId === where.ownerId).map((f) => f.id);
+      deleteMany: async ({ where }: { where: { ownerId?: string; id?: { in: string[] } } }) => {
+        const ids = [...files.values()]
+          .filter(
+            (f) =>
+              (where.ownerId === undefined || f.ownerId === where.ownerId) &&
+              (where.id === undefined || where.id.in.includes(f.id)),
+          )
+          .map((f) => f.id);
         for (const id of ids) {
           deleteFileCascade(id);
         }
@@ -685,11 +695,28 @@ export function createFakePrisma() {
       findMany: async ({
         where,
       }: {
-        where: { fileId: string };
+        where: {
+          fileId?: string;
+          file?: { ownerId?: string; folderId?: IdFilter };
+        };
         orderBy?: unknown;
         select?: unknown;
       }) => {
-        return chunksOf(where.fileId).map((c) => ({ ...c }));
+        if (where.fileId !== undefined) {
+          return chunksOf(where.fileId).map((c) => ({ ...c }));
+        }
+        // Relation filter: chunks whose parent file matches (used by folder delete).
+        const filter = where.file ?? {};
+        return [...fileChunks.values()]
+          .filter((chunk) => {
+            const file = files.get(chunk.fileId);
+            return (
+              file !== undefined &&
+              (filter.ownerId === undefined || file.ownerId === filter.ownerId) &&
+              matchesIdFilter(file.folderId, filter.folderId)
+            );
+          })
+          .map((c) => ({ ...c }));
       },
       update: async ({
         where,

@@ -279,3 +279,39 @@ describe('cancel cleanup and delete audit detail', () => {
     expect(tree.folders[0]?.files).toContain('beach.jpg');
   });
 });
+
+describe('folder deletion is batched and bounded', () => {
+  it('deletes a folder whose file count exceeds the batch size', async () => {
+    const { api, queue, prisma } = await setup();
+    const folder = await api.post('/api/folders', { name: 'Bulk' });
+    const folderId = folder.body.folder.id as string;
+
+    // More files than DELETE_BATCH_SIZE (100) forces multiple delete batches.
+    const COUNT = 230;
+    for (let i = 0; i < COUNT; i += 1) {
+      const create = await api.post('/api/files/uploads', {
+        name: `f${i}.bin`,
+        size: 4,
+        folderId,
+      });
+      await api.putRaw(
+        `/api/files/uploads/${create.body.upload.uploadId}/parts/0`,
+        Buffer.alloc(4),
+      );
+    }
+    await queue.drain();
+    expect(prisma._state.files.size).toBe(COUNT);
+
+    const res = await api.delete(`/api/folders/${folderId}`);
+    expect(res.status).toBe(204);
+
+    // Everything is gone from the database…
+    expect(prisma._state.files.size).toBe(0);
+    expect(prisma._state.folders.size).toBe(0);
+    expect(prisma._state.fileChunks.size).toBe(0);
+
+    // …and the audit records the true total even though the tree is capped.
+    const event = prisma._state.auditEvents.find((e) => e.type === 'folder.deleted');
+    expect(event?.metadata).toMatchObject({ files: COUNT, truncated: true });
+  });
+});
