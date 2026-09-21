@@ -26,6 +26,13 @@ hosts the long-lived Express API (Vercel's serverless functions are the wrong
 shape for streaming multi-GB uploads through a persistent process). Neon holds
 the metadata. **Recommended trio: Render (API) + Vercel (web) + Neon (DB).**
 
+For the Vercel project, set **Root Directory** to `apps/web` and leave the
+framework as Next.js. The web package's `prebuild` script compiles
+`@pocketverse/shared` before `next build`, so the workspace dependency is
+available on a clean deployment. Vercel must install from the repository root
+with the committed `pnpm-lock.yaml`; do not deploy `apps/web` as a standalone
+directory.
+
 ---
 
 ## For future developers: run it locally first
