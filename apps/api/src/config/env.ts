@@ -24,13 +24,25 @@ const envSchema = z.object({
   TELEGRAM_API_HASH: z.string().min(16),
   // Queue backend: with REDIS_URL jobs run on BullMQ; without it an
   // in-process runner with the same retry policy is used (dev / no-Redis).
-  REDIS_URL: z.string().url().optional(),
+  REDIS_URL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().url().optional(),
+  ),
   // Outbound email (password resets). Unset → reset links are logged instead
   // of sent, which keeps local development fully testable.
-  RESEND_API_KEY: z.string().min(1).optional(),
-  MAIL_FROM: z.string().min(3).optional(),
+  RESEND_API_KEY: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  MAIL_FROM: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(3).optional(),
+  ),
   // Error tracking (Sentry). Unset → no error reports are sent (dev default).
-  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_DSN: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().url().optional(),
+  ),
   // Telegram-level chunk size (handoff: 1.5GB default, tune later).
   CHUNK_SIZE_BYTES: z.coerce.number().int().positive().default(1_500_000_000),
   // HTTP upload part size — small enough for free-tier request timeouts.

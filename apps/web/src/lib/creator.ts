@@ -7,6 +7,5 @@
  */
 export const CREATOR = {
   name: 'Shivam Dhyani',
-  linkedin:
-    process.env.NEXT_PUBLIC_CREATOR_LINKEDIN ?? 'https://www.linkedin.com/in/YOUR-HANDLE-HERE',
+  linkedin: process.env.NEXT_PUBLIC_CREATOR_LINKEDIN ?? 'https://www.linkedin.com/in/shivam-dhyani',
 };
