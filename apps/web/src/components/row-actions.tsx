@@ -1,28 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { MoreIcon } from '@/components/icons';
-
-/**
- * Subscribes to a media query without tripping hydration: the server snapshot
- * is always `false`, so the first client render matches the prerendered HTML
- * and React swaps in the real value immediately afterwards.
- */
-function useMediaQuery(query: string): boolean {
-  const subscribe = useCallback(
-    (onChange: () => void) => {
-      const list = window.matchMedia(query);
-      list.addEventListener('change', onChange);
-      return () => list.removeEventListener('change', onChange);
-    },
-    [query],
-  );
-  return useSyncExternalStore(
-    subscribe,
-    () => window.matchMedia(query).matches,
-    () => false,
-  );
-}
+import { useMediaQuery } from '@/lib/pointer';
 
 export interface RowAction {
   label: string;

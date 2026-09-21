@@ -1758,7 +1758,26 @@ button {
 }
 
 @media (pointer: coarse) {
+  /* Touch has no hover, so a checkbox on every row would have to be permanent —
+     which is visual noise on a phone. Instead, selection starts with a long
+     press (see useItemPress in the drive) and every checkbox appears only once
+     something is actually selected, after which a tap toggles items. */
   .pv-select-box {
-    opacity: 1; /* no hover on touch — always visible */
+    display: none;
+  }
+
+  .pv-list:has(.selected) .pv-select-box,
+  .pv-grid:has(.selected) .pv-select-box {
+    display: inline-flex;
+    opacity: 1;
+  }
+
+  /* A long press must select the item, not the text under the finger (and not
+     raise the OS copy/paste callout). */
+  .pv-row,
+  .pv-grid-card {
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
 }

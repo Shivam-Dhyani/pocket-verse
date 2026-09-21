@@ -10,6 +10,7 @@ import { track } from '@/lib/analytics';
 import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
 import { downloadFile, downloadZip, driveApi, relativePathOf } from '@/lib/files';
+import { useIsTouch, useLongPress } from '@/lib/pointer';
 import {
   UPLOAD_MAX_FILE_COUNT,
   UPLOAD_SUGGESTED_BATCH,
@@ -745,6 +746,7 @@ function DriveInner() {
                 onRenameFolder: renameFolder,
                 onDeleteFolder: deleteFolder,
                 onDownloadFolder: (folder) => void downloadSelected([], [folder.id]),
+                selectionActive: selectionCount > 0,
               };
               return view === 'grid' ? <GridView {...viewProps} /> : <ListView {...viewProps} />;
             })()
@@ -810,6 +812,46 @@ interface ViewProps {
   onRenameFolder: (folder: FolderDto) => void;
   onDeleteFolder: (folder: FolderDto) => void;
   onDownloadFolder: (folder: FolderDto) => void;
+  /** True once anything is selected — on touch, taps then toggle instead of open. */
+  selectionActive: boolean;
+}
+
+/**
+ * Wires up how an item responds to being pressed.
+ *
+ * Touch behaves the way a phone's gallery does: press and hold to start
+ * selecting, after which a plain tap toggles items instead of opening them.
+ * That is why touch layouts show no checkboxes until a selection exists —
+ * holding is the entry point, so a checkbox on every row is just noise.
+ * Mouse input is untouched: the hover checkbox selects, a click opens.
+ */
+function useItemPress({
+  onToggle,
+  onOpen,
+  selectionActive,
+}: {
+  onToggle: () => void;
+  onOpen?: () => void;
+  selectionActive: boolean;
+}) {
+  const touch = useIsTouch();
+  const { consumed, handlers } = useLongPress(onToggle);
+
+  return {
+    ...handlers,
+    onClick: () => {
+      if (consumed.current) {
+        // This click is the tail of a long press — it already selected.
+        consumed.current = false;
+        return;
+      }
+      if (touch && selectionActive) {
+        onToggle();
+        return;
+      }
+      onOpen?.();
+    },
+  };
 }
 
 /** Row/card checkbox — stops propagation so selecting never opens the item. */
@@ -879,62 +921,136 @@ function folderActions(folder: FolderDto, props: ViewProps) {
   return <RowActions actions={actions} />;
 }
 
+function FolderRow({ folder, view }: { folder: FolderDto; view: ViewProps }) {
+  const selected = view.selectedFolders.has(folder.id);
+  const press = useItemPress({
+    onToggle: () => view.onToggleFolder(folder.id),
+    onOpen: () => view.onOpenFolder(folder.id),
+    selectionActive: view.selectionActive,
+  });
+  return (
+    <li className={`pv-row pv-row--clickable${selected ? ' selected' : ''}`} {...press}>
+      <SelectBox
+        checked={selected}
+        label={`Select ${folder.name}`}
+        onToggle={() => view.onToggleFolder(folder.id)}
+      />
+      <span className="pv-row-icon">
+        <FolderIcon />
+      </span>
+      <span className="pv-row-main">
+        <span className="pv-row-name">{folder.name}</span>
+        <span className="pv-row-meta">Folder</span>
+      </span>
+      {folderActions(folder, view)}
+    </li>
+  );
+}
+
+function FileRow({ file, view }: { file: FileDto; view: ViewProps }) {
+  const selected = view.selectedFiles.has(file.id);
+  const clickable = file.status === 'ready';
+  const Icon = iconForMime(file.mimeType);
+  const press = useItemPress({
+    onToggle: () => view.onToggleFile(file.id),
+    onOpen: clickable ? () => view.onOpenFile(file) : undefined,
+    selectionActive: view.selectionActive,
+  });
+  return (
+    <li
+      className={`pv-row${clickable ? ' pv-row--clickable' : ''}${selected ? ' selected' : ''}`}
+      {...press}
+    >
+      <SelectBox
+        checked={selected}
+        label={`Select ${file.name}`}
+        onToggle={() => view.onToggleFile(file.id)}
+      />
+      <span className="pv-row-icon">
+        <Icon />
+      </span>
+      <span className="pv-row-main">
+        <span className="pv-row-name">{file.name}</span>
+        <span
+          className="pv-row-meta"
+          style={{ display: 'flex', gap: 'var(--pv-s2)', alignItems: 'center' }}
+        >
+          {formatSize(file.size)}
+          <StatusBadge status={file.status} syncProgress={file.syncProgress} />
+        </span>
+      </span>
+      {fileActions(file, view)}
+    </li>
+  );
+}
+
 function ListView(props: ViewProps) {
   return (
     <ul className="pv-list">
       {props.folders.map((folder) => (
-        <li
-          key={folder.id}
-          className={`pv-row pv-row--clickable${props.selectedFolders.has(folder.id) ? ' selected' : ''}`}
-          onClick={() => props.onOpenFolder(folder.id)}
-        >
-          <SelectBox
-            checked={props.selectedFolders.has(folder.id)}
-            label={`Select ${folder.name}`}
-            onToggle={() => props.onToggleFolder(folder.id)}
-          />
-          <span className="pv-row-icon">
-            <FolderIcon />
-          </span>
-          <span className="pv-row-main">
-            <span className="pv-row-name">{folder.name}</span>
-            <span className="pv-row-meta">Folder</span>
-          </span>
-          {folderActions(folder, props)}
-        </li>
+        <FolderRow key={folder.id} folder={folder} view={props} />
       ))}
-      {props.files.map((file) => {
-        const Icon = iconForMime(file.mimeType);
-        const clickable = file.status === 'ready';
-        return (
-          <li
-            key={file.id}
-            className={`pv-row${clickable ? ' pv-row--clickable' : ''}${props.selectedFiles.has(file.id) ? ' selected' : ''}`}
-            onClick={clickable ? () => props.onOpenFile(file) : undefined}
-          >
-            <SelectBox
-              checked={props.selectedFiles.has(file.id)}
-              label={`Select ${file.name}`}
-              onToggle={() => props.onToggleFile(file.id)}
-            />
-            <span className="pv-row-icon">
-              <Icon />
-            </span>
-            <span className="pv-row-main">
-              <span className="pv-row-name">{file.name}</span>
-              <span
-                className="pv-row-meta"
-                style={{ display: 'flex', gap: 'var(--pv-s2)', alignItems: 'center' }}
-              >
-                {formatSize(file.size)}
-                <StatusBadge status={file.status} syncProgress={file.syncProgress} />
-              </span>
-            </span>
-            {fileActions(file, props)}
-          </li>
-        );
-      })}
+      {props.files.map((file) => (
+        <FileRow key={file.id} file={file} view={props} />
+      ))}
     </ul>
+  );
+}
+
+function FolderCard({ folder, view }: { folder: FolderDto; view: ViewProps }) {
+  const selected = view.selectedFolders.has(folder.id);
+  const press = useItemPress({
+    onToggle: () => view.onToggleFolder(folder.id),
+    onOpen: () => view.onOpenFolder(folder.id),
+    selectionActive: view.selectionActive,
+  });
+  return (
+    <div className={`pv-grid-card pv-row--clickable${selected ? ' selected' : ''}`} {...press}>
+      <SelectBox
+        checked={selected}
+        label={`Select ${folder.name}`}
+        onToggle={() => view.onToggleFolder(folder.id)}
+      />
+      <span className="pv-row-icon">
+        <FolderIcon width={26} height={26} />
+      </span>
+      <span className="pv-row-name" style={{ fontWeight: 500 }}>
+        {folder.name}
+      </span>
+      {folderActions(folder, view)}
+    </div>
+  );
+}
+
+function FileCard({ file, view }: { file: FileDto; view: ViewProps }) {
+  const selected = view.selectedFiles.has(file.id);
+  const clickable = file.status === 'ready';
+  const Icon = iconForMime(file.mimeType);
+  const press = useItemPress({
+    onToggle: () => view.onToggleFile(file.id),
+    onOpen: clickable ? () => view.onOpenFile(file) : undefined,
+    selectionActive: view.selectionActive,
+  });
+  return (
+    <div
+      className={`pv-grid-card${clickable ? ' pv-row--clickable' : ''}${selected ? ' selected' : ''}`}
+      {...press}
+    >
+      <SelectBox
+        checked={selected}
+        label={`Select ${file.name}`}
+        onToggle={() => view.onToggleFile(file.id)}
+      />
+      <span className="pv-row-icon">
+        <Icon width={26} height={26} />
+      </span>
+      <span className="pv-row-name" style={{ fontWeight: 500 }}>
+        {file.name}
+      </span>
+      <span className="pv-row-meta">{formatSize(file.size)}</span>
+      <StatusBadge status={file.status} syncProgress={file.syncProgress} />
+      {fileActions(file, view)}
+    </div>
   );
 }
 
@@ -942,51 +1058,11 @@ function GridView(props: ViewProps) {
   return (
     <div className="pv-grid">
       {props.folders.map((folder) => (
-        <div
-          key={folder.id}
-          className={`pv-grid-card pv-row--clickable${props.selectedFolders.has(folder.id) ? ' selected' : ''}`}
-          onClick={() => props.onOpenFolder(folder.id)}
-        >
-          <SelectBox
-            checked={props.selectedFolders.has(folder.id)}
-            label={`Select ${folder.name}`}
-            onToggle={() => props.onToggleFolder(folder.id)}
-          />
-          <span className="pv-row-icon">
-            <FolderIcon width={26} height={26} />
-          </span>
-          <span className="pv-row-name" style={{ fontWeight: 500 }}>
-            {folder.name}
-          </span>
-          {folderActions(folder, props)}
-        </div>
+        <FolderCard key={folder.id} folder={folder} view={props} />
       ))}
-      {props.files.map((file) => {
-        const Icon = iconForMime(file.mimeType);
-        const clickable = file.status === 'ready';
-        return (
-          <div
-            key={file.id}
-            className={`pv-grid-card${clickable ? ' pv-row--clickable' : ''}${props.selectedFiles.has(file.id) ? ' selected' : ''}`}
-            onClick={clickable ? () => props.onOpenFile(file) : undefined}
-          >
-            <SelectBox
-              checked={props.selectedFiles.has(file.id)}
-              label={`Select ${file.name}`}
-              onToggle={() => props.onToggleFile(file.id)}
-            />
-            <span className="pv-row-icon">
-              <Icon width={26} height={26} />
-            </span>
-            <span className="pv-row-name" style={{ fontWeight: 500 }}>
-              {file.name}
-            </span>
-            <span className="pv-row-meta">{formatSize(file.size)}</span>
-            <StatusBadge status={file.status} syncProgress={file.syncProgress} />
-            {fileActions(file, props)}
-          </div>
-        );
-      })}
+      {props.files.map((file) => (
+        <FileCard key={file.id} file={file} view={props} />
+      ))}
     </div>
   );
 }
