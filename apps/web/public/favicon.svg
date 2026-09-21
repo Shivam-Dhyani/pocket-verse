@@ -1,0 +1,16 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pocketverse">
+  <!-- Tab favicon: legible at 16px, dark tile so it reads on light and dark chrome. -->
+  <defs>
+    <linearGradient id="fring" x1="10%" y1="12%" x2="90%" y2="88%">
+      <stop offset="0%" stop-color="#6d6af8" />
+      <stop offset="55%" stop-color="#9d6af8" />
+      <stop offset="100%" stop-color="#4fd1c5" />
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="8" fill="#0a1022" />
+  <g transform="translate(16 16)">
+    <ellipse rx="11" ry="4.8" transform="rotate(-24)" fill="none" stroke="url(#fring)" stroke-width="1.9" />
+    <circle cx="7.2" cy="-5.8" r="1.7" fill="#4fd1c5" />
+    <circle r="3.4" fill="#e9eaff" />
+  </g>
+</svg>

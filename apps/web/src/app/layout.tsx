@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Suspense, type ReactNode } from 'react';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/space-grotesk';
@@ -9,6 +9,29 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Pocketverse',
   description: 'A whole universe in your pocket — your files, in storage you control.',
+  applicationName: 'Pocketverse',
+  // Next auto-links app/manifest.ts, but being explicit is harmless and clear.
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+    ],
+    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180' }],
+  },
+  // Lets iOS launch Pocketverse full-screen when added to the home screen.
+  appleWebApp: {
+    capable: true,
+    title: 'Pocketverse',
+    statusBarStyle: 'black-translucent',
+  },
+};
+
+export const viewport: Viewport = {
+  // Matches the app's dark background so the status/URL bar blends in.
+  themeColor: '#070b16',
+  // Draw under the iOS notch/home indicator when running installed.
+  viewportFit: 'cover',
 };
 
 /** Runs before paint so a stored light-mode choice never flashes dark. */

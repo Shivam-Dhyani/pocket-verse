@@ -47,4 +47,5 @@ export type AnalyticsEvent =
   | 'file_previewed'
   | 'file_downloaded'
   | 'retry_sync_clicked'
-  | 'view_mode_changed';
+  | 'view_mode_changed'
+  | 'app_installed';

@@ -926,6 +926,24 @@ button {
   font-size: var(--pv-text-sm);
 }
 
+/* Install-the-app card (Settings) */
+.pv-install-done {
+  display: flex;
+  align-items: center;
+  gap: var(--pv-s2);
+}
+.pv-install-done svg {
+  flex-shrink: 0;
+  color: var(--pv-accent-teal);
+}
+.pv-install-steps {
+  margin: var(--pv-s3) 0 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: var(--pv-s2);
+  line-height: 1.5;
+}
+
 .pv-timeline {
   list-style: none;
   margin: 0;
