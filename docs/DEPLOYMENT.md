@@ -14,6 +14,57 @@ Architecture reminder: file bytes never rest on our servers — they stream
 through the API into each user's own storage. Our footprint is metadata
 (Postgres) plus in-flight staging on the API's disk.
 
+### Why these hosts (and why Vercel over Netlify)
+
+The web app is **Next.js 15 App Router**. Vercel builds Next.js, so every
+App-Router feature (server components, streaming/`Suspense`, `instrumentation`,
+the `@sentry/nextjs` plugin) is first-class with zero config, and it
+auto-detects this pnpm monorepo's `apps/web` root. Netlify runs Next.js only
+through an adapter that lags newer App-Router internals and needs manual
+base-directory wiring — workable, but more friction for no benefit here. Render
+hosts the long-lived Express API (Vercel's serverless functions are the wrong
+shape for streaming multi-GB uploads through a persistent process). Neon holds
+the metadata. **Recommended trio: Render (API) + Vercel (web) + Neon (DB).**
+
+---
+
+## For future developers: run it locally first
+
+Before touching production, get the stack running on your machine. You need
+Node ≥ 22, `pnpm` (via `corepack enable`), and a Postgres you can reach (local
+install, Docker, or a throwaway Neon database).
+
+```bash
+# 1. Install every workspace's deps from the repo root
+corepack enable && pnpm install
+
+# 2. Configure env — copy the template and fill in the blanks
+cp .env.example .env
+#   Minimum to boot the API:
+#     DATABASE_URL      your Postgres string
+#     JWT_SECRET        openssl rand -base64 48
+#     MASTER_KEYS       k1:$(node -e "console.log(require('crypto').randomBytes(32).toString('base64'))")
+#     MASTER_KEY_ACTIVE k1
+#     TELEGRAM_API_ID / TELEGRAM_API_HASH   from https://my.telegram.org
+#   Everything else has a sane default or is optional (see the file's comments).
+
+# 3. Create the schema in your database
+pnpm --filter @pocketverse/api prisma:migrate
+
+# 4. Run API (:4000) and web (:3000) together
+pnpm dev
+```
+
+Then confirm your change is sound before you ever push — the same gates CI and
+your reviewers expect:
+
+```bash
+pnpm typecheck && pnpm lint && pnpm --filter @pocketverse/api test && pnpm --filter @pocketverse/web build
+```
+
+New to the data model? Read `docs/DATABASE.md` (the living table↔endpoint map)
+and `README.md` (phase-by-phase feature tour) before deploying.
+
 ---
 
 ## 0. Prerequisites
@@ -126,6 +177,32 @@ What's already handled in code for this environment:
 - [ ] Upload a small folder — arrives nested, shown as one item
 - [ ] Delete a file — disappears from the storage channel too
 - [ ] Activity page lists everything you just did
+
+## Known limitations of the free tier (go in with eyes open)
+
+None of these are bugs — they're the shape of free hosting. Know them before
+you test, so expected behavior doesn't read as breakage.
+
+- **One CORS origin.** The API allows exactly the URL in `CORS_ORIGIN`, and
+  auth cookies are credentialed. So **Vercel preview deployments** (their own
+  random per-commit URLs) can't sign in — only your one production URL can.
+  Test auth on the production domain, not a preview. To support previews later
+  you'd widen the CORS check to a list/regex of allowed origins.
+- **Render free disk is ephemeral and small.** In-flight chunks stage to
+  `.staging` on disk (up to `CHUNK_SIZE_BYTES`, 1.5 GB, per chunk) before they
+  ship to the user's storage, then are deleted. A single very large upload
+  briefly pressures the free instance's disk; it clears chunk by chunk. This is
+  the free tier's real ceiling — lower `CHUNK_SIZE_BYTES` if you hit it, or move
+  to a paid instance with a persistent disk for heavy use.
+- **Render free sleeps after ~15 min idle** (~30–60 s cold start) and gives
+  ~750 instance-hours/month. The UptimeRobot ping in step 5 keeps it warm and
+  is strongly recommended.
+- **Neon free suspends when idle** and holds 0.5 GB (≈100–200K file records —
+  metadata only). First request after idle wakes it; `connect_timeout=15` on
+  `DATABASE_URL` covers the wake latency.
+- **In-process job queue** (no `REDIS_URL`): jobs don't survive a restart or
+  deploy. Fine for one instance; add Upstash (step 2) if you scale out or want
+  jobs durable across restarts.
 
 ## Troubleshooting
 
