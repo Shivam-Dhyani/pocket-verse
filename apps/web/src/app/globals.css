@@ -354,6 +354,19 @@ button {
   font-weight: 600;
 }
 
+/* A long, unbreakable filename (preview/rename titles) must not shove the close
+   button off-screen — truncate it and keep the button fixed. */
+.pv-modal-head > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pv-modal-head .pv-iconbtn {
+  flex-shrink: 0;
+}
+
 .pv-modal-body {
   padding: var(--pv-s5);
   overflow: auto;
@@ -816,6 +829,10 @@ button {
 /* upload panel */
 .pv-uploads {
   display: grid;
+  /* minmax(0, 1fr) lets the single column shrink below its content's width, so
+     a long unbroken filename inside .top .name can ellipsize instead of forcing
+     the whole panel wider than the viewport on phones. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--pv-s3);
   margin-bottom: var(--pv-s4);
 }
@@ -1623,6 +1640,22 @@ button {
 
 .pv-selectbar .pv-iconbtn {
   margin-left: auto;
+}
+
+/* Phones: the count takes its own row, the actions share the next one, so the
+   bar never runs off-screen (the buttons are too wide to sit inline at ~360px). */
+@media (max-width: 560px) {
+  .pv-selectbar {
+    flex-wrap: wrap;
+    padding-inline: var(--pv-s3);
+  }
+  .pv-selectbar-count {
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+  .pv-selectbar .pv-button {
+    flex: 1;
+  }
 }
 
 .pv-select-box {
