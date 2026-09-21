@@ -26,12 +26,14 @@ hosts the long-lived Express API (Vercel's serverless functions are the wrong
 shape for streaming multi-GB uploads through a persistent process). Neon holds
 the metadata. **Recommended trio: Render (API) + Vercel (web) + Neon (DB).**
 
-For the Vercel project, set **Root Directory** to `apps/web` and leave the
-framework as Next.js. The web package's `prebuild` script compiles
-`@pocketverse/shared` before `next build`, so the workspace dependency is
-available on a clean deployment. Vercel must install from the repository root
-with the committed `pnpm-lock.yaml`; do not deploy `apps/web` as a standalone
-directory.
+For the Vercel project, leave **Root Directory** blank (the repository root)
+and leave the framework as Next.js. Set the build command to
+`pnpm --filter @pocketverse/web build`. This lets Vercel install the complete
+pnpm workspace, including `packages/shared`; the web package's `prebuild`
+script then compiles `@pocketverse/shared` before `next build`. Do not set the
+Root Directory to `apps/web`, because that excludes the sibling workspace
+package that the web app imports. The committed `vercel.json` also pins the
+workspace install and build commands.
 
 ---
 
@@ -148,8 +150,9 @@ What's already handled in code for this environment:
 ## 4. Vercel (web)
 
 1. https://vercel.com → Add New Project → import the repo.
-2. **Root Directory:** `apps/web` (Vercel auto-detects Next.js and pnpm).
-3. Environment variables:
+2. **Root Directory:** leave blank (repository root).
+3. **Build Command:** `pnpm --filter @pocketverse/web build`.
+4. Environment variables:
 
    | Var                                                   | Value                                                   |
    | ----------------------------------------------------- | ------------------------------------------------------- |
@@ -161,7 +164,7 @@ What's already handled in code for this environment:
    | `NEXT_PUBLIC_SENTRY_DSN`                              | optional — Sentry browser DSN                           |
    | `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | optional — upload source maps for readable stack traces |
 
-4. Deploy and note the URL, e.g. `https://pocketverse.vercel.app`.
+5. Deploy and note the URL, e.g. `https://pocketverse.vercel.app`.
 
 ## 5. Close the loop
 
