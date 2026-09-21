@@ -28,6 +28,7 @@ import { SearchBox } from '@/components/search-box';
 import { UploadPanel } from '@/components/upload-panel';
 import { PreviewModal } from '@/components/preview-modal';
 import { MoveDialog } from '@/components/move-dialog';
+import { RowActions, type RowAction } from '@/components/row-actions';
 import { useDialogs } from '@/components/dialogs';
 import { EmptyState, StatusBadge, formatSize } from '@/components/ui';
 import {
@@ -828,72 +829,54 @@ function SelectBox({
   );
 }
 
+const ACTION_ICON = { width: 16, height: 16 };
+
 function fileActions(file: FileDto, props: ViewProps) {
-  return (
-    // Clicks on the action buttons must not also trigger the row's open handler.
-    <span className="pv-row-actions" onClick={(event) => event.stopPropagation()}>
-      {file.status === 'ready' && (
-        <button
-          className="pv-iconbtn"
-          type="button"
-          title="Download"
-          onClick={() => void downloadFile(file)}
-        >
-          <DownloadIcon width={16} height={16} />
-        </button>
-      )}
-      <button
-        className="pv-iconbtn"
-        type="button"
-        title="Rename"
-        onClick={() => props.onRenameFile(file)}
-      >
-        <PencilIcon width={16} height={16} />
-      </button>
-      <button className="pv-iconbtn" type="button" title="Move" onClick={() => props.onMove(file)}>
-        <MoveIcon width={16} height={16} />
-      </button>
-      <button
-        className="pv-iconbtn"
-        type="button"
-        title="Delete"
-        onClick={() => props.onDeleteFile(file)}
-      >
-        <TrashIcon width={16} height={16} />
-      </button>
-    </span>
+  const actions: RowAction[] = [];
+  if (file.status === 'ready') {
+    actions.push({
+      label: 'Download',
+      icon: <DownloadIcon {...ACTION_ICON} />,
+      onSelect: () => void downloadFile(file),
+    });
+  }
+  actions.push(
+    {
+      label: 'Rename',
+      icon: <PencilIcon {...ACTION_ICON} />,
+      onSelect: () => props.onRenameFile(file),
+    },
+    { label: 'Move', icon: <MoveIcon {...ACTION_ICON} />, onSelect: () => props.onMove(file) },
+    {
+      label: 'Delete',
+      icon: <TrashIcon {...ACTION_ICON} />,
+      onSelect: () => props.onDeleteFile(file),
+      danger: true,
+    },
   );
+  return <RowActions actions={actions} />;
 }
 
 function folderActions(folder: FolderDto, props: ViewProps) {
-  return (
-    <span className="pv-row-actions" onClick={(event) => event.stopPropagation()}>
-      <button
-        className="pv-iconbtn"
-        type="button"
-        title="Download as zip"
-        onClick={() => props.onDownloadFolder(folder)}
-      >
-        <DownloadIcon width={16} height={16} />
-      </button>
-      <button
-        className="pv-iconbtn"
-        type="button"
-        title="Rename"
-        onClick={() => props.onRenameFolder(folder)}
-      >
-        <PencilIcon width={16} height={16} />
-      </button>
-      <button
-        className="pv-iconbtn"
-        type="button"
-        title="Delete"
-        onClick={() => props.onDeleteFolder(folder)}
-      >
-        <TrashIcon width={16} height={16} />
-      </button>
-    </span>
-  );
+  const actions: RowAction[] = [
+    {
+      label: 'Download as zip',
+      icon: <DownloadIcon {...ACTION_ICON} />,
+      onSelect: () => props.onDownloadFolder(folder),
+    },
+    {
+      label: 'Rename',
+      icon: <PencilIcon {...ACTION_ICON} />,
+      onSelect: () => props.onRenameFolder(folder),
+    },
+    {
+      label: 'Delete',
+      icon: <TrashIcon {...ACTION_ICON} />,
+      onSelect: () => props.onDeleteFolder(folder),
+      danger: true,
+    },
+  ];
+  return <RowActions actions={actions} />;
 }
 
 function ListView(props: ViewProps) {

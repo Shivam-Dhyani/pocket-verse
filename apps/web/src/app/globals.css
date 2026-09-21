@@ -697,6 +697,18 @@ button {
   color: var(--pv-accent);
 }
 
+/* Row overflow menus hang off the right edge of the row — anchoring them left
+   would push them past the screen on a phone. */
+.pv-menu--end {
+  left: auto;
+  right: 0;
+}
+
+.pv-menu button.pv-menu-danger,
+.pv-menu button.pv-menu-danger svg {
+  color: var(--pv-danger);
+}
+
 .pv-folder-meta {
   display: inline-flex;
   align-items: center;

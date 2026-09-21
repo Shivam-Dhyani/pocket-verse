@@ -167,6 +167,15 @@ export const InfoIcon = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+/** Row overflow ("more actions") — opens the per-item menu on touch layouts. */
+export const MoreIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="5.2" r="1.45" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="12" r="1.45" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="18.8" r="1.45" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const XIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="m6 6 12 12M18 6 6 18" />
