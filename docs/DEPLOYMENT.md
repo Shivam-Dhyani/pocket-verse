@@ -138,6 +138,40 @@ The repo contains `render.yaml`, so use a Blueprint deploy:
    schema, then `/health` goes green.
 4. Note the service URL, e.g. `https://pocketverse-api.onrender.com`.
 
+### Password-reset email (read this if "forgot password" sends nothing)
+
+Password reset is the **only** email Pocketverse sends, and it is off unless
+both `RESEND_API_KEY` **and** `MAIL_FROM` are set. With either missing the API
+does not fail — by design it logs the reset link instead and still returns
+success to the browser (so the form can't be used to discover which emails have
+accounts). The visible symptom is exactly "I never got the email".
+
+To turn it on:
+
+1. Create a free account at https://resend.com.
+2. **Verify a domain** (Domains → Add Domain, then add the DNS records). This is
+   the step people skip. Resend only accepts a `from` address on a domain you
+   have verified — with an unverified one it rejects every send with a 403.
+   - No domain? Resend's `onboarding@resend.dev` works for testing, but it can
+     only deliver to the address that owns the Resend account.
+3. Create an API key (API Keys → Create).
+4. On Render set both vars and redeploy:
+   - `RESEND_API_KEY` = the key
+   - `MAIL_FROM` = a sender **on the verified domain**, e.g.
+     `Pocketverse <noreply@yourdomain.com>`
+
+Checking it: trigger a reset and read the Render logs. You'll see one of
+
+- `Email is not configured … link logged instead of sent` → the vars aren't set
+  (the log line contains the working reset URL, so the flow is still testable);
+- `Password reset email rejected by Resend …` → the vars are set but Resend
+  refused; the logged `status`/`detail` names the reason (usually an
+  unverified `from` domain);
+- no mail log at all → the address has no account, so nothing was sent.
+
+The reset link's host comes from `CORS_ORIGIN`, so make sure step 5 is done or
+the emailed link will point at the wrong site.
+
 What's already handled in code for this environment:
 
 - `trust proxy` is enabled in production so rate limiting sees real client IPs.

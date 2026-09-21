@@ -37,11 +37,6 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-self.addEventListener('message', (event) => {
-  // Lets the page activate an updated worker immediately (see pwa-register.tsx).
-  if (event.data === 'SKIP_WAITING') self.skipWaiting();
-});
-
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);

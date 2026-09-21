@@ -23,6 +23,11 @@
   --pv-s7: 48px;
   --pv-s8: 64px;
 
+  /* Single horizontal page gutter, so every top-level surface breathes the same
+     amount from the screen edge. Narrowed (but never cramped) on phones by the
+     max-width:760px block near the bottom of this file. */
+  --pv-gutter: var(--pv-s5);
+
   /* shape & motion */
   --pv-radius-sm: 8px;
   --pv-radius: 12px;
@@ -489,7 +494,7 @@ button {
 .pv-app {
   max-width: 1080px;
   margin: 0 auto;
-  padding: var(--pv-s5) var(--pv-s5) var(--pv-s8);
+  padding: var(--pv-s5) var(--pv-gutter) var(--pv-s8);
 }
 
 .pv-appbar {
@@ -622,6 +627,13 @@ button {
 .pv-breadcrumb button.current {
   color: var(--pv-text);
   background: var(--pv-surface-raised);
+}
+
+/* List/grid switch — pinned to the end of whichever toolbar row it lands on. */
+.pv-view-toggle {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
 }
 
 .pv-dropzone {
@@ -1425,8 +1437,14 @@ button {
 
 /* ---------- small screens (phones + small tablets) ---------- */
 @media (max-width: 760px) {
+  /* 20px keeps a real margin from the screen edge (12px read as cramped) while
+     still leaving usable width on a 320px phone. */
+  :root {
+    --pv-gutter: 20px;
+  }
+
   .pv-app {
-    padding: var(--pv-s3) var(--pv-s3) var(--pv-s7);
+    padding: var(--pv-s4) var(--pv-gutter) var(--pv-s7);
   }
 
   /* Header: brand + nav on the first row, search drops to its own full row. */
@@ -1445,11 +1463,11 @@ button {
   }
 
   .pv-hero {
-    padding: 10vh 20px 40px;
+    padding: 10vh var(--pv-gutter) 40px;
   }
 
   .pv-shell {
-    padding: 6vh 16px 40px;
+    padding: 6vh var(--pv-gutter) 40px;
   }
 
   .pv-grid {
@@ -1469,12 +1487,14 @@ button {
     opacity: 1 !important;
   }
 
+  /* .pv-app already supplies the gutter — no extra inset, so every surface
+     lines up on the same left edge. */
   .pv-page {
-    padding: 0 var(--pv-s1);
+    padding: 0;
   }
 
   .pv-busy-pill {
-    max-width: calc(100vw - 32px);
+    max-width: calc(100vw - (2 * var(--pv-gutter)));
     text-align: center;
   }
 
@@ -1655,6 +1675,22 @@ button {
   }
   .pv-selectbar .pv-button {
     flex: 1;
+  }
+
+  /* Tighter toolbar buttons so Upload + New folder + the view switch share one
+     row, instead of the switch wrapping onto a row of its own. */
+  .pv-drive-toolbar .pv-button {
+    padding-inline: 13px;
+  }
+
+  /* Long names wrap to at most two lines, then ellipsize — otherwise a single
+     file can be five lines tall and the list stops being scannable. */
+  .pv-row-name {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
 

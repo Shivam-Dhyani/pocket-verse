@@ -51,6 +51,7 @@ Two design rules shape everything below:
 | `apps/web/src/components/providers.tsx` | Mounts `<PwaRegister />` at app root.                                                                                                                                                    |
 | `apps/web/src/app/security/page.tsx`    | Renders `<InstallApp />` in the Settings section.                                                                                                                                        |
 | `apps/web/src/lib/analytics.ts`         | Added `app_installed` to the analytics event allow-list (fires only on a successful install; no identifying data).                                                                       |
+| `apps/web/next.config.ts`               | `must-revalidate` cache headers for `/sw.js` and `/manifest.webmanifest`, so a cached worker can't stall updates.                                                                        |
 | `apps/web/package.json`                 | Added the `icons` script and `sharp` devDependency.                                                                                                                                      |
 | `apps/web/src/app/globals.css`          | Added `.pv-install-done` / `.pv-install-steps` styles for the install card.                                                                                                              |
 
@@ -99,8 +100,37 @@ The service worker's `fetch` handler:
   when the network is unreachable. Drive HTML is always fetched fresh.
 
 Bump `CACHE_VERSION` in `sw.js` to retire old caches on the next activation.
-`pwa-register.tsx` posts `SKIP_WAITING` so an updated worker can take over
-without a manual reload.
+
+## Do installed apps get updates after a redeploy? (Yes)
+
+An installed PWA is not a frozen copy of the site — it loads the same URL from
+the network each launch. A redeploy reaches installed users **on their next
+launch** (or next foreground), with no reinstall and nothing for them to do.
+
+Why that holds here, concretely:
+
+1. **HTML is never cached.** Navigations are network-first, so launching the app
+   fetches the current page from the server.
+2. **JS/CSS are content-hashed.** Fresh HTML references new
+   `/_next/static/<hash>` filenames, which have never been cached, so they're
+   fetched. Old files stay cached but are simply no longer referenced.
+3. **The worker itself updates.** The browser re-fetches `/sw.js` on navigation
+   and whenever `registration.update()` runs — `pwa-register.tsx` calls it every
+   time the app returns to the foreground, so a long-lived installed app doesn't
+   wait for the browser's own (up to 24h) check. `sw.js` calls `skipWaiting()`
+   on install and `clients.claim()` on activate, so a new worker takes over
+   immediately rather than idling until every tab closes.
+4. **`/sw.js` is served `must-revalidate`** (see `next.config.ts`). This matters:
+   if a CDN serves a stale worker, updates stall — it's the most common reason a
+   PWA "won't update".
+
+Deliberately **not** done: we never force-reload a page that's already open. An
+upload only survives while the tab lives, so yanking the page out from under a
+running upload would be worse than showing slightly old UI until next launch.
+
+One caveat: things in `PRECACHE_URLS` (`offline.html`, icons) are written once
+per worker version. If you edit those, **bump `CACHE_VERSION`** or existing
+installs keep the old copies.
 
 ## Regenerating the icons
 

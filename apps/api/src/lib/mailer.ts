@@ -49,7 +49,15 @@ export function createMailer(
           }),
         });
         if (!res.ok) {
-          logger.error({ status: res.status }, 'Password reset email failed to send');
+          // The body carries the actual reason — most often an unverified
+          // `from` domain or a bad key. Without it a failure is just a number,
+          // and the endpoint deliberately still reports success to the caller
+          // (no account probing), so this log is the only place it surfaces.
+          const detail = await res.text().catch(() => '');
+          logger.error(
+            { status: res.status, detail: detail.slice(0, 500), from: mailFrom },
+            'Password reset email rejected by Resend — check MAIL_FROM is on a verified domain and RESEND_API_KEY is valid',
+          );
         }
       } catch (error) {
         logger.error({ err: error }, 'Password reset email failed to send');

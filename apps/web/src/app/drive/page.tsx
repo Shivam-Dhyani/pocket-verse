@@ -631,7 +631,7 @@ function DriveInner() {
             >
               <FolderIcon width={16} height={16} /> New folder
             </button>
-            <span style={{ display: 'flex', gap: 2 }}>
+            <span className="pv-view-toggle">
               <button
                 className="pv-iconbtn"
                 type="button"

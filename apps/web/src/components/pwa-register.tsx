@@ -28,12 +28,28 @@ export function PwaRegister() {
     window.addEventListener('appinstalled', onInstalled);
 
     // Register after load so it never competes with first paint.
+    let registration: ServiceWorkerRegistration | undefined;
+    const onVisible = () => {
+      // An installed app can stay open for days. Re-checking whenever it comes
+      // back to the foreground means a redeploy is picked up promptly instead
+      // of waiting for the browser's own (up to 24h) update check.
+      if (document.visibilityState === 'visible') {
+        void registration?.update().catch(() => undefined);
+      }
+    };
+
     if ('serviceWorker' in navigator) {
       const register = () => {
-        navigator.serviceWorker.register('/sw.js').catch(() => {
-          // A failed SW registration must never break the app — installability
-          // and the offline page are enhancements, not requirements.
-        });
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then((reg) => {
+            registration = reg;
+            document.addEventListener('visibilitychange', onVisible);
+          })
+          .catch(() => {
+            // A failed SW registration must never break the app — installability
+            // and the offline page are enhancements, not requirements.
+          });
       };
       if (document.readyState === 'complete') register();
       else window.addEventListener('load', register, { once: true });
@@ -42,6 +58,7 @@ export function PwaRegister() {
     return () => {
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
       window.removeEventListener('appinstalled', onInstalled);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [setDeferredPrompt, setInstalled]);
 
