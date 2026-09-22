@@ -86,6 +86,9 @@ function DriveInner() {
     setDeletingFiles((prev) => new Set([...prev].filter((id) => !files.includes(id))));
     setDeletingFolders((prev) => new Set([...prev].filter((id) => !folders.includes(id))));
   }, []);
+  // True once a listing has rendered at least once this session, so only the
+  // first load takes over the screen.
+  const [listedOnce, setListedOnce] = useState(false);
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [preview, setPreview] = useState<FileDto | null>(null);
   const [moving, setMoving] = useState<FileDto | null>(null);
@@ -145,6 +148,12 @@ function DriveInner() {
       router.replace('/login');
     }
   }, [me.isError, router]);
+
+  useEffect(() => {
+    if (drive.isSuccess) {
+      setListedOnce(true);
+    }
+  }, [drive.isSuccess]);
 
   // Every drive history entry (root and each folder) carries a pvGuard stamp,
   // so the Back handler can tell "moving between folders" (normal, allowed)
@@ -380,13 +389,17 @@ function DriveInner() {
       return;
     }
     setError(null);
-    setBusy(`Deleting ${selectionCount} ${selectionCount === 1 ? 'item' : 'items'}…`);
     // Lock every item being removed for the whole run, so a half-deleted drive
     // can't be opened, previewed or deleted a second time while requests are
     // still in flight.
     const files = [...selFiles];
     const folders = [...selFolders];
     markDeleting(files, folders);
+    // Hand the selection back immediately. The items themselves are locked and
+    // say "Deleting…", so keeping them selected only froze the action bar —
+    // which meant you couldn't start on the *next* few files until the first
+    // batch finished. Progress lives in the floating pill instead.
+    clearSelection();
     try {
       for (const id of files) {
         await driveApi.deleteFile(id);
@@ -394,12 +407,10 @@ function DriveInner() {
       for (const id of folders) {
         await driveApi.deleteFolder(id);
       }
-      clearSelection();
       await refresh();
     } catch (err) {
       onError(err);
     } finally {
-      setBusy(null);
       unmarkDeleting(files, folders);
     }
   }
@@ -505,8 +516,12 @@ function DriveInner() {
     });
     if (ok) {
       markDeleting([file.id], []);
+      setError(null);
       try {
-        await act(`Deleting “${file.name}”…`, () => driveApi.deleteFile(file.id));
+        await driveApi.deleteFile(file.id);
+        await refresh();
+      } catch (err) {
+        onError(err);
       } finally {
         unmarkDeleting([file.id], []);
       }
@@ -533,19 +548,42 @@ function DriveInner() {
     });
     if (ok) {
       markDeleting([], [folder.id]);
+      setError(null);
       try {
-        await act(`Deleting “${folder.name}”…`, () => driveApi.deleteFolder(folder.id));
+        await driveApi.deleteFolder(folder.id);
+        await refresh();
+      } catch (err) {
+        onError(err);
       } finally {
         unmarkDeleting([], [folder.id]);
       }
     }
   }
 
+  // Deletions report through the pending sets rather than `busy`, so several
+  // batches can run at once and the pill still shows the true total.
+  const deletingCount = deletingFiles.size + deletingFolders.size;
+  const busyLabel =
+    busy ??
+    (deletingCount > 0
+      ? `Deleting ${deletingCount} ${deletingCount === 1 ? 'item' : 'items'}…`
+      : null);
+
   const visibleFiles = (drive.data?.files ?? []).filter((file) => !hiddenFileIds.has(file.id));
   const visibleFolders = drive.data?.folders ?? [];
   const isEmpty = drive.data && visibleFolders.length === 0 && visibleFiles.length === 0;
 
-  if (me.isPending || (me.isSuccess && connection.isPending)) {
+  // One unbroken launch screen from sign-in until the drive actually has
+  // something to show: identity, then connection, then the first listing. It
+  // used to hand off to a bare "Loading…" line for that last step, which read
+  // as a different screen appearing. Folder navigation is excluded — that gets
+  // the small inline spinner below, because a full-screen takeover for opening
+  // a folder would be far worse.
+  if (
+    me.isPending ||
+    (me.isSuccess && connection.isPending) ||
+    (drive.isPending && (connected || broken) && !listedOnce)
+  ) {
     return <AppSplash />;
   }
   if (me.isError) {
@@ -683,31 +721,38 @@ function DriveInner() {
 
           {selectionCount > 0 && (
             <div className="pv-selectbar" role="toolbar" aria-label="Selection actions">
-              <span className="pv-selectbar-count">{selectionCount} selected</span>
               <button
-                className="pv-button pv-button--ghost"
-                type="button"
-                disabled={busy !== null}
-                onClick={() => void downloadSelected([...selFiles], [...selFolders])}
-              >
-                <DownloadIcon width={15} height={15} /> Download
-              </button>
-              <button
-                className="pv-button pv-button--ghost"
-                type="button"
-                disabled={busy !== null}
-                onClick={() => void deleteSelected()}
-              >
-                <TrashIcon width={15} height={15} /> Delete
-              </button>
-              <button
-                className="pv-iconbtn"
+                className="pv-iconbtn pv-selectbar-clear"
                 type="button"
                 title="Clear selection"
                 aria-label="Clear selection"
                 onClick={clearSelection}
               >
-                <XIcon width={15} height={15} />
+                <XIcon width={17} height={17} />
+              </button>
+              <span className="pv-selectbar-count">{selectionCount} selected</span>
+              {/* Only a download in flight disables these. A delete does not:
+                  its items are already locked individually, so the bar must stay
+                  live for whatever you pick next. */}
+              <button
+                className="pv-selectbar-action"
+                type="button"
+                title="Download"
+                disabled={busy !== null}
+                onClick={() => void downloadSelected([...selFiles], [...selFolders])}
+              >
+                <DownloadIcon width={17} height={17} />
+                <span className="pv-action-label">Download</span>
+              </button>
+              <button
+                className="pv-selectbar-action pv-selectbar-action--danger"
+                type="button"
+                title="Delete"
+                disabled={busy !== null}
+                onClick={() => void deleteSelected()}
+              >
+                <TrashIcon width={17} height={17} />
+                <span className="pv-action-label">Delete</span>
               </button>
             </div>
           )}
@@ -784,9 +829,9 @@ function DriveInner() {
 
       {preview && <PreviewModal file={preview} onClose={() => setPreview(null)} />}
       {moving && <MoveDialog file={moving} onClose={() => setMoving(null)} onMoved={refresh} />}
-      {busy && (
+      {busyLabel && (
         <div className="pv-busy-pill" role="status" aria-live="polite">
-          <span className="pv-spinner" /> {busy}
+          <span className="pv-spinner" /> {busyLabel}
         </div>
       )}
     </div>

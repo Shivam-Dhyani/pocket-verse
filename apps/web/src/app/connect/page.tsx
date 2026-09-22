@@ -8,6 +8,7 @@ import type { ConnectionDto } from '@pocketverse/shared';
 import { ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
 import { useAuthStore } from '@/stores/auth';
+import { AppSplash } from '@/components/app-splash';
 import { OrbitLogo, ShieldIcon } from '@/components/icons';
 import { PasswordField } from '@/components/password-field';
 
@@ -89,13 +90,9 @@ export default function ConnectPage() {
   }
 
   if (status.isPending) {
-    return (
-      <main className="pv-shell">
-        <p className="pv-footnote">
-          <span className="pv-spinner" /> Checking your connection…
-        </p>
-      </main>
-    );
+    // Same launch screen as the drive — this is still part of the one
+    // uninterrupted load the user sees after signing in.
+    return <AppSplash label="Checking your connection…" />;
   }
 
   return (

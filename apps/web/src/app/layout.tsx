@@ -34,8 +34,13 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
-/** Runs before paint so a stored light-mode choice never flashes dark. */
-const themeInit = `try{var t=localStorage.getItem('pv-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}`;
+/**
+ * Runs before paint so a stored light-mode choice never flashes dark — and
+ * repaints `theme-color` at the same time, which is what the phone's status bar
+ * and the PWA's title bar follow. Without that second line those bars stay dark
+ * in light mode, since the manifest's theme_color is a single fixed value.
+ */
+const themeInit = `try{var t=localStorage.getItem('pv-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='light'?'#f4f6fc':'#070b16')}}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

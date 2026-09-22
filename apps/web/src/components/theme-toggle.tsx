@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { MoonIcon, SunIcon } from '@/components/icons';
+import { applyTheme } from '@/lib/theme';
 
 /** Dark is the default; the choice persists and beats system preference. */
 export function ThemeToggle() {
@@ -15,7 +16,9 @@ export function ThemeToggle() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    // applyTheme also repaints the browser/OS chrome (theme-color), which is
+    // what keeps the PWA's status bar from staying dark in light mode.
+    applyTheme(theme);
     window.localStorage.setItem('pv-theme', theme);
   }, [theme]);
 

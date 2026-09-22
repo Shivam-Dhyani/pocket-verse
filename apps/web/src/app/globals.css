@@ -465,21 +465,11 @@ button {
   color: var(--pv-text-muted);
 }
 
-/* Installed: the OS splash always paints the manifest's background_color, which
-   is dark whatever theme the user picked. So the launch screen stays dark there
-   too — otherwise a light-mode user gets a dark-to-light jump at the handoff,
-   which is exactly the seam this screen exists to hide. In a browser tab there
-   is no OS splash to match, so it follows the theme. */
-@media (display-mode: standalone) {
-  .pv-splash {
-    background: #070b16;
-    color-scheme: dark;
-  }
-
-  .pv-splash-hint {
-    color: #8b93ad;
-  }
-}
+/* The launch screen follows the user's theme, light included. Note the OS
+   splash that precedes it in an installed app always paints the manifest's
+   (fixed, dark) background_color, so a light-mode launch does step from dark to
+   light. That's a deliberate trade: a light-mode user should land on a light
+   app, and the manifest allows only one background colour. */
 
 @keyframes pv-spin {
   to {
@@ -1762,29 +1752,74 @@ button {
   background: color-mix(in srgb, var(--pv-accent) 8%, var(--pv-surface));
 }
 
+/* Contextual action bar, in the shape phones have taught everyone to read:
+   dismiss on the left, what's selected next to it, actions on the right. One
+   row at every width — the old pair of full-width buttons wrapped onto two
+   rows on a phone and pushed the list down. */
 .pv-selectbar-count {
   font-size: var(--pv-text-sm);
   font-weight: 600;
-  margin-right: var(--pv-s2);
+  margin-right: auto;
 }
 
-.pv-selectbar .pv-iconbtn {
-  margin-left: auto;
+.pv-selectbar-clear {
+  flex-shrink: 0;
 }
 
-/* Phones: the count takes its own row, the actions share the next one, so the
-   bar never runs off-screen (the buttons are too wide to sit inline at ~360px). */
+.pv-selectbar-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pv-s2);
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--pv-border-strong);
+  border-radius: 999px;
+  background: none;
+  color: var(--pv-text);
+  font: inherit;
+  font-size: var(--pv-text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--pv-fast),
+    border-color var(--pv-fast),
+    color var(--pv-fast);
+}
+
+.pv-selectbar-action:hover:not(:disabled) {
+  background: var(--pv-surface-raised);
+}
+
+.pv-selectbar-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Destructive action reads as destructive without shouting. */
+.pv-selectbar-action--danger {
+  color: var(--pv-danger);
+  border-color: color-mix(in srgb, var(--pv-danger) 40%, transparent);
+}
+
+.pv-selectbar-action--danger:hover:not(:disabled) {
+  background: var(--pv-danger-bg);
+  border-color: var(--pv-danger);
+}
+
 @media (max-width: 560px) {
   .pv-selectbar {
-    flex-wrap: wrap;
-    padding-inline: var(--pv-s3);
+    padding-inline: var(--pv-s2);
+    gap: var(--pv-s1);
   }
-  .pv-selectbar-count {
-    flex-basis: 100%;
-    margin-right: 0;
+
+  /* Icon-only on phones: the icons are unambiguous here and the labels are what
+     forced the bar to wrap. Titles/aria-labels keep them named. */
+  .pv-action-label {
+    display: none;
   }
-  .pv-selectbar .pv-button {
-    flex: 1;
+
+  .pv-selectbar-action {
+    padding: 9px 12px;
   }
 
   /* Tighter toolbar buttons so Upload + New folder + the view switch share one
