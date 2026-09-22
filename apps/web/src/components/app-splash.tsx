@@ -18,11 +18,15 @@
 function SplashMark() {
   return (
     <svg width="104" height="104" viewBox="0 0 512 512" role="img" aria-label="Pocketverse">
+      {/* Tile and core colours come from CSS custom properties so the mark can
+          invert for light mode — a dark tile on a light launch screen reads as
+          a sticker dropped on the page. The orbit ring is brand gradient and
+          works on either. */}
       <defs>
         <radialGradient id="pv-splash-bg" cx="50%" cy="42%" r="72%">
-          <stop offset="0%" stopColor="#161d3a" />
-          <stop offset="60%" stopColor="#0a1022" />
-          <stop offset="100%" stopColor="#070b16" />
+          <stop offset="0%" stopColor="var(--pv-mark-tile-1)" />
+          <stop offset="60%" stopColor="var(--pv-mark-tile-2)" />
+          <stop offset="100%" stopColor="var(--pv-mark-tile-3)" />
         </radialGradient>
         <linearGradient id="pv-splash-ring" x1="14%" y1="18%" x2="88%" y2="86%">
           <stop offset="0%" stopColor="#6d6af8" />
@@ -30,9 +34,9 @@ function SplashMark() {
           <stop offset="100%" stopColor="#4fd1c5" />
         </linearGradient>
         <radialGradient id="pv-splash-core" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#eef0ff" />
-          <stop offset="70%" stopColor="#b9b6ff" />
-          <stop offset="100%" stopColor="#8f8bf6" />
+          <stop offset="0%" stopColor="var(--pv-mark-core-1)" />
+          <stop offset="70%" stopColor="var(--pv-mark-core-2)" />
+          <stop offset="100%" stopColor="var(--pv-mark-core-3)" />
         </radialGradient>
         <filter id="pv-splash-glow" x="-60%" y="-60%" width="220%" height="220%">
           <feGaussianBlur stdDeviation="18" result="b" />

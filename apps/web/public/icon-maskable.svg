@@ -1,0 +1,26 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pocketverse">
+  <defs>
+    <linearGradient id="ring" x1="14%" y1="18%" x2="88%" y2="86%">
+      <stop offset="0%" stop-color="#6d6af8" />
+      <stop offset="55%" stop-color="#9d6af8" />
+      <stop offset="100%" stop-color="#4fd1c5" />
+    </linearGradient>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#eef0ff" />
+      <stop offset="70%" stop-color="#b9b6ff" />
+      <stop offset="100%" stop-color="#8f8bf6" />
+    </radialGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="18" result="b" />
+      <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="#070b16" />
+
+  <g transform="translate(256 256)" filter="url(#glow)">
+    <ellipse rx="182" ry="80" transform="rotate(-24)" fill="none" stroke="url(#ring)" stroke-width="15" />
+    <circle cx="118" cy="-96" r="26" fill="#4fd1c5" />
+    <circle r="52" fill="url(#core)" />
+  </g>
+</svg>

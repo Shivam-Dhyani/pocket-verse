@@ -28,10 +28,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Matches the app's dark background so the status/URL bar blends in.
+  // The app's default (dark) colour; applyTheme() repaints this at runtime to
+  // match the chosen theme, which is what tints the phone's status bar.
   themeColor: '#070b16',
-  // Draw under the iOS notch/home indicator when running installed.
-  viewportFit: 'cover',
+  // NOTE: deliberately no `viewportFit: 'cover'`. Edge-to-edge tells Chrome the
+  // page paints its own system-bar areas, so it stops filling them with
+  // theme-color and leaves dark bands instead — which is why the status and
+  // navigation bars stayed black in light mode. Letting the viewport end at the
+  // safe area puts those bars back under theme-color's control.
 };
 
 /**
@@ -40,7 +44,7 @@ export const viewport: Viewport = {
  * and the PWA's title bar follow. Without that second line those bars stay dark
  * in light mode, since the manifest's theme_color is a single fixed value.
  */
-const themeInit = `try{var t=localStorage.getItem('pv-theme');if(t==='light'||t==='dark'){document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',t==='light'?'#f4f6fc':'#070b16')}}catch(e){}`;
+const themeInit = `try{var t=localStorage.getItem('pv-theme')==='light'?'light':'dark';document.documentElement.dataset.theme=t;var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++)m[i].remove();var n=document.createElement('meta');n.name='theme-color';n.content=t==='light'?'#f4f6fc':'#070b16';document.head.appendChild(n)}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

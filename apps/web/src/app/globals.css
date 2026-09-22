@@ -445,8 +445,32 @@ button {
     env(safe-area-inset-left);
 }
 
+/* App-mark colours. Dark: a deep tile with a luminous white core. Light: a pale
+   tile with a violet core — a near-white core would simply vanish on it. */
 .pv-splash svg {
   color: var(--pv-accent);
+  --pv-mark-tile-1: #161d3a;
+  --pv-mark-tile-2: #0a1022;
+  --pv-mark-tile-3: #070b16;
+  --pv-mark-core-1: #eef0ff;
+  --pv-mark-core-2: #b9b6ff;
+  --pv-mark-core-3: #8f8bf6;
+}
+
+[data-theme='light'] .pv-splash svg {
+  --pv-mark-tile-1: #ffffff;
+  --pv-mark-tile-2: #f3f5fd;
+  --pv-mark-tile-3: #e8ecf8;
+  --pv-mark-core-1: #a5a2ff;
+  --pv-mark-core-2: #7d79f7;
+  --pv-mark-core-3: #5f5ce4;
+}
+
+/* The tile needs an edge in light mode — without it the pale tile dissolves
+   into the pale background and the mark looks unfinished. */
+[data-theme='light'] .pv-splash svg rect {
+  stroke: rgba(45, 55, 100, 0.12);
+  stroke-width: 2;
 }
 
 .pv-splash-name {

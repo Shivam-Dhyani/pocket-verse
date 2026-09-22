@@ -11,11 +11,30 @@ export const THEME_COLORS: Record<Theme, string> = {
   light: '#f4f6fc',
 };
 
-/** Applies a theme to the document: page styling *and* browser chrome. */
+/**
+ * Applies a theme to the document: page styling *and* browser chrome.
+ *
+ * The theme-color tag is replaced rather than edited, and any duplicates are
+ * removed first: a stale or media-scoped tag left in the document wins
+ * unpredictably, and the symptom is a status bar stuck on the wrong colour.
+ */
 export function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) {
-    meta.setAttribute('content', THEME_COLORS[theme]);
+  document.querySelectorAll('meta[name="theme-color"]').forEach((tag) => tag.remove());
+  const meta = document.createElement('meta');
+  meta.name = 'theme-color';
+  meta.content = THEME_COLORS[theme];
+  document.head.appendChild(meta);
+}
+
+/** The theme in effect: the stored choice, else the app default (dark). */
+export function storedTheme(): Theme {
+  if (typeof window === 'undefined') {
+    return 'dark';
+  }
+  try {
+    return window.localStorage.getItem('pv-theme') === 'light' ? 'light' : 'dark';
+  } catch {
+    return 'dark';
   }
 }
