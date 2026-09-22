@@ -99,8 +99,23 @@ The service worker's `fetch` handler:
 - **Cache-first** only for `/_next/static/*` — these filenames are
   content-hashed and immutable, so caching them is safe and makes repeat loads
   fast.
+- **Cache-first** for the precached set (`PRECACHE_URLS`). This branch is not
+  optional: without it the install cache was written but never _read_, so
+  anything `offline.html` referenced went to the network and rendered broken
+  while offline. `offline.html` now also inlines its own artwork, so it holds up
+  even with an empty cache.
 - **Network-first** for page navigations, falling back to `offline.html` only
   when the network is unreachable. Drive HTML is always fetched fresh.
+
+Precaching is done one URL at a time rather than with `cache.addAll()`, which is
+all-or-nothing — a single renamed icon would otherwise fail the whole install
+and leave the app with no worker and no offline page at all.
+
+The offline page is only reached by a _navigation_. Inside the running app
+(especially an installed one, where you rarely navigate) losing the network used
+to surface as a generic "can't reach the server" error, so `OfflineBanner`
+watches `online`/`offline` and says so plainly. `offline.html` reloads itself
+when connectivity returns, and follows the app's stored light/dark theme.
 
 Bump `CACHE_VERSION` in `sw.js` to retire old caches on the next activation.
 

@@ -9,8 +9,7 @@ import type { FileDto, FolderDto } from '@pocketverse/shared';
 import { track } from '@/lib/analytics';
 import { api, ApiError } from '@/lib/api';
 import { connectionApi } from '@/lib/connection';
-import { downloadFile, downloadZip, driveApi, relativePathOf } from '@/lib/files';
-import { useIsTouch, useLongPress } from '@/lib/pointer';
+import { downloadZip, driveApi, relativePathOf } from '@/lib/files';
 import {
   UPLOAD_MAX_FILE_COUNT,
   UPLOAD_SUGGESTED_BATCH,
@@ -30,17 +29,14 @@ import { SearchBox } from '@/components/search-box';
 import { UploadPanel } from '@/components/upload-panel';
 import { PreviewModal } from '@/components/preview-modal';
 import { MoveDialog } from '@/components/move-dialog';
-import { RowActions, type RowAction } from '@/components/row-actions';
+import { GridView, ListView, type ViewProps } from '@/components/drive-views';
 import { useDialogs } from '@/components/dialogs';
-import { EmptyState, StatusBadge, formatSize } from '@/components/ui';
+import { EmptyState, formatSize } from '@/components/ui';
 import {
   DownloadIcon,
   FolderIcon,
   GridIcon,
-  iconForMime,
   ListIcon,
-  MoveIcon,
-  PencilIcon,
   TrashIcon,
   UploadPortal,
   XIcon,
@@ -77,6 +73,19 @@ function DriveInner() {
   // Label of the user action currently in flight ("Deleting…") — drives the
   // floating busy pill so no action ever runs without visible feedback.
   const [busy, setBusy] = useState<string | null>(null);
+  // Items with a delete request in flight. They stay visible (so the drive
+  // doesn't jump) but are inert: not openable, not previewable, not deletable
+  // again. Cleared in a `finally`, so a failed delete hands control back.
+  const [deletingFiles, setDeletingFiles] = useState<ReadonlySet<string>>(new Set());
+  const [deletingFolders, setDeletingFolders] = useState<ReadonlySet<string>>(new Set());
+  const markDeleting = useCallback((files: string[], folders: string[]) => {
+    setDeletingFiles((prev) => new Set([...prev, ...files]));
+    setDeletingFolders((prev) => new Set([...prev, ...folders]));
+  }, []);
+  const unmarkDeleting = useCallback((files: string[], folders: string[]) => {
+    setDeletingFiles((prev) => new Set([...prev].filter((id) => !files.includes(id))));
+    setDeletingFolders((prev) => new Set([...prev].filter((id) => !folders.includes(id))));
+  }, []);
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [preview, setPreview] = useState<FileDto | null>(null);
   const [moving, setMoving] = useState<FileDto | null>(null);
@@ -372,11 +381,17 @@ function DriveInner() {
     }
     setError(null);
     setBusy(`Deleting ${selectionCount} ${selectionCount === 1 ? 'item' : 'items'}…`);
+    // Lock every item being removed for the whole run, so a half-deleted drive
+    // can't be opened, previewed or deleted a second time while requests are
+    // still in flight.
+    const files = [...selFiles];
+    const folders = [...selFolders];
+    markDeleting(files, folders);
     try {
-      for (const id of selFiles) {
+      for (const id of files) {
         await driveApi.deleteFile(id);
       }
-      for (const id of selFolders) {
+      for (const id of folders) {
         await driveApi.deleteFolder(id);
       }
       clearSelection();
@@ -385,6 +400,7 @@ function DriveInner() {
       onError(err);
     } finally {
       setBusy(null);
+      unmarkDeleting(files, folders);
     }
   }
 
@@ -488,7 +504,12 @@ function DriveInner() {
       danger: true,
     });
     if (ok) {
-      await act(`Deleting “${file.name}”…`, () => driveApi.deleteFile(file.id));
+      markDeleting([file.id], []);
+      try {
+        await act(`Deleting “${file.name}”…`, () => driveApi.deleteFile(file.id));
+      } finally {
+        unmarkDeleting([file.id], []);
+      }
     }
   }
 
@@ -511,7 +532,12 @@ function DriveInner() {
       danger: true,
     });
     if (ok) {
-      await act(`Deleting “${folder.name}”…`, () => driveApi.deleteFolder(folder.id));
+      markDeleting([], [folder.id]);
+      try {
+        await act(`Deleting “${folder.name}”…`, () => driveApi.deleteFolder(folder.id));
+      } finally {
+        unmarkDeleting([], [folder.id]);
+      }
     }
   }
 
@@ -747,6 +773,8 @@ function DriveInner() {
                 onDeleteFolder: deleteFolder,
                 onDownloadFolder: (folder) => void downloadSelected([], [folder.id]),
                 selectionActive: selectionCount > 0,
+                deletingFiles,
+                deletingFolders,
               };
               return view === 'grid' ? <GridView {...viewProps} /> : <ListView {...viewProps} />;
             })()
@@ -794,275 +822,5 @@ function Breadcrumb({
         </span>
       ))}
     </nav>
-  );
-}
-
-interface ViewProps {
-  folders: FolderDto[];
-  files: FileDto[];
-  selectedFiles: ReadonlySet<string>;
-  selectedFolders: ReadonlySet<string>;
-  onToggleFile: (id: string) => void;
-  onToggleFolder: (id: string) => void;
-  onOpenFolder: (id: string) => void;
-  onOpenFile: (file: FileDto) => void;
-  onMove: (file: FileDto) => void;
-  onRenameFile: (file: FileDto) => void;
-  onDeleteFile: (file: FileDto) => void;
-  onRenameFolder: (folder: FolderDto) => void;
-  onDeleteFolder: (folder: FolderDto) => void;
-  onDownloadFolder: (folder: FolderDto) => void;
-  /** True once anything is selected — on touch, taps then toggle instead of open. */
-  selectionActive: boolean;
-}
-
-/**
- * Wires up how an item responds to being pressed.
- *
- * Touch behaves the way a phone's gallery does: press and hold to start
- * selecting, after which a plain tap toggles items instead of opening them.
- * That is why touch layouts show no checkboxes until a selection exists —
- * holding is the entry point, so a checkbox on every row is just noise.
- * Mouse input is untouched: the hover checkbox selects, a click opens.
- */
-function useItemPress({
-  onToggle,
-  onOpen,
-  selectionActive,
-}: {
-  onToggle: () => void;
-  onOpen?: () => void;
-  selectionActive: boolean;
-}) {
-  const touch = useIsTouch();
-  const { consumed, handlers } = useLongPress(onToggle);
-
-  return {
-    ...handlers,
-    onClick: () => {
-      if (consumed.current) {
-        // This click is the tail of a long press — it already selected.
-        consumed.current = false;
-        return;
-      }
-      if (touch && selectionActive) {
-        onToggle();
-        return;
-      }
-      onOpen?.();
-    },
-  };
-}
-
-/** Row/card checkbox — stops propagation so selecting never opens the item. */
-function SelectBox({
-  checked,
-  label,
-  onToggle,
-}: {
-  checked: boolean;
-  label: string;
-  onToggle: () => void;
-}) {
-  return (
-    <label className="pv-select-box" onClick={(event) => event.stopPropagation()}>
-      <input type="checkbox" checked={checked} aria-label={label} onChange={onToggle} />
-    </label>
-  );
-}
-
-const ACTION_ICON = { width: 16, height: 16 };
-
-function fileActions(file: FileDto, props: ViewProps) {
-  const actions: RowAction[] = [];
-  if (file.status === 'ready') {
-    actions.push({
-      label: 'Download',
-      icon: <DownloadIcon {...ACTION_ICON} />,
-      onSelect: () => void downloadFile(file),
-    });
-  }
-  actions.push(
-    {
-      label: 'Rename',
-      icon: <PencilIcon {...ACTION_ICON} />,
-      onSelect: () => props.onRenameFile(file),
-    },
-    { label: 'Move', icon: <MoveIcon {...ACTION_ICON} />, onSelect: () => props.onMove(file) },
-    {
-      label: 'Delete',
-      icon: <TrashIcon {...ACTION_ICON} />,
-      onSelect: () => props.onDeleteFile(file),
-      danger: true,
-    },
-  );
-  return <RowActions actions={actions} />;
-}
-
-function folderActions(folder: FolderDto, props: ViewProps) {
-  const actions: RowAction[] = [
-    {
-      label: 'Download as zip',
-      icon: <DownloadIcon {...ACTION_ICON} />,
-      onSelect: () => props.onDownloadFolder(folder),
-    },
-    {
-      label: 'Rename',
-      icon: <PencilIcon {...ACTION_ICON} />,
-      onSelect: () => props.onRenameFolder(folder),
-    },
-    {
-      label: 'Delete',
-      icon: <TrashIcon {...ACTION_ICON} />,
-      onSelect: () => props.onDeleteFolder(folder),
-      danger: true,
-    },
-  ];
-  return <RowActions actions={actions} />;
-}
-
-function FolderRow({ folder, view }: { folder: FolderDto; view: ViewProps }) {
-  const selected = view.selectedFolders.has(folder.id);
-  const press = useItemPress({
-    onToggle: () => view.onToggleFolder(folder.id),
-    onOpen: () => view.onOpenFolder(folder.id),
-    selectionActive: view.selectionActive,
-  });
-  return (
-    <li className={`pv-row pv-row--clickable${selected ? ' selected' : ''}`} {...press}>
-      <SelectBox
-        checked={selected}
-        label={`Select ${folder.name}`}
-        onToggle={() => view.onToggleFolder(folder.id)}
-      />
-      <span className="pv-row-icon">
-        <FolderIcon />
-      </span>
-      <span className="pv-row-main">
-        <span className="pv-row-name">{folder.name}</span>
-        <span className="pv-row-meta">Folder</span>
-      </span>
-      {folderActions(folder, view)}
-    </li>
-  );
-}
-
-function FileRow({ file, view }: { file: FileDto; view: ViewProps }) {
-  const selected = view.selectedFiles.has(file.id);
-  const clickable = file.status === 'ready';
-  const Icon = iconForMime(file.mimeType);
-  const press = useItemPress({
-    onToggle: () => view.onToggleFile(file.id),
-    onOpen: clickable ? () => view.onOpenFile(file) : undefined,
-    selectionActive: view.selectionActive,
-  });
-  return (
-    <li
-      className={`pv-row${clickable ? ' pv-row--clickable' : ''}${selected ? ' selected' : ''}`}
-      {...press}
-    >
-      <SelectBox
-        checked={selected}
-        label={`Select ${file.name}`}
-        onToggle={() => view.onToggleFile(file.id)}
-      />
-      <span className="pv-row-icon">
-        <Icon />
-      </span>
-      <span className="pv-row-main">
-        <span className="pv-row-name">{file.name}</span>
-        <span
-          className="pv-row-meta"
-          style={{ display: 'flex', gap: 'var(--pv-s2)', alignItems: 'center' }}
-        >
-          {formatSize(file.size)}
-          <StatusBadge status={file.status} syncProgress={file.syncProgress} />
-        </span>
-      </span>
-      {fileActions(file, view)}
-    </li>
-  );
-}
-
-function ListView(props: ViewProps) {
-  return (
-    <ul className="pv-list">
-      {props.folders.map((folder) => (
-        <FolderRow key={folder.id} folder={folder} view={props} />
-      ))}
-      {props.files.map((file) => (
-        <FileRow key={file.id} file={file} view={props} />
-      ))}
-    </ul>
-  );
-}
-
-function FolderCard({ folder, view }: { folder: FolderDto; view: ViewProps }) {
-  const selected = view.selectedFolders.has(folder.id);
-  const press = useItemPress({
-    onToggle: () => view.onToggleFolder(folder.id),
-    onOpen: () => view.onOpenFolder(folder.id),
-    selectionActive: view.selectionActive,
-  });
-  return (
-    <div className={`pv-grid-card pv-row--clickable${selected ? ' selected' : ''}`} {...press}>
-      <SelectBox
-        checked={selected}
-        label={`Select ${folder.name}`}
-        onToggle={() => view.onToggleFolder(folder.id)}
-      />
-      <span className="pv-row-icon">
-        <FolderIcon width={26} height={26} />
-      </span>
-      <span className="pv-row-name" style={{ fontWeight: 500 }}>
-        {folder.name}
-      </span>
-      {folderActions(folder, view)}
-    </div>
-  );
-}
-
-function FileCard({ file, view }: { file: FileDto; view: ViewProps }) {
-  const selected = view.selectedFiles.has(file.id);
-  const clickable = file.status === 'ready';
-  const Icon = iconForMime(file.mimeType);
-  const press = useItemPress({
-    onToggle: () => view.onToggleFile(file.id),
-    onOpen: clickable ? () => view.onOpenFile(file) : undefined,
-    selectionActive: view.selectionActive,
-  });
-  return (
-    <div
-      className={`pv-grid-card${clickable ? ' pv-row--clickable' : ''}${selected ? ' selected' : ''}`}
-      {...press}
-    >
-      <SelectBox
-        checked={selected}
-        label={`Select ${file.name}`}
-        onToggle={() => view.onToggleFile(file.id)}
-      />
-      <span className="pv-row-icon">
-        <Icon width={26} height={26} />
-      </span>
-      <span className="pv-row-name" style={{ fontWeight: 500 }}>
-        {file.name}
-      </span>
-      <span className="pv-row-meta">{formatSize(file.size)}</span>
-      <StatusBadge status={file.status} syncProgress={file.syncProgress} />
-      {fileActions(file, view)}
-    </div>
-  );
-}
-
-function GridView(props: ViewProps) {
-  return (
-    <div className="pv-grid">
-      {props.folders.map((folder) => (
-        <FolderCard key={folder.id} folder={folder} view={props} />
-      ))}
-      {props.files.map((file) => (
-        <FileCard key={file.id} file={file} view={props} />
-      ))}
-    </div>
   );
 }

@@ -409,6 +409,23 @@ button {
   display: inline-block;
 }
 
+/* Connectivity bar. Pinned above everything (including modals) because it
+   explains why whatever you just tapped isn't working. */
+.pv-offline-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 70;
+  padding: calc(env(safe-area-inset-top) + 8px) var(--pv-s4) 8px;
+  text-align: center;
+  font-size: var(--pv-text-xs);
+  font-weight: 500;
+  color: #fff;
+  background: var(--pv-danger);
+  box-shadow: var(--pv-shadow);
+}
+
 /* Launch screen — deliberately matches the PWA manifest splash (same
    background_color, same mark, centred) so the OS splash and the app's first
    paint look like one continuous screen. Nothing here animates or moves: any
@@ -446,6 +463,22 @@ button {
 .pv-splash-hint {
   font-size: var(--pv-text-sm);
   color: var(--pv-text-muted);
+}
+
+/* Installed: the OS splash always paints the manifest's background_color, which
+   is dark whatever theme the user picked. So the launch screen stays dark there
+   too — otherwise a light-mode user gets a dark-to-light jump at the handoff,
+   which is exactly the seam this screen exists to hide. In a browser tab there
+   is no OS splash to match, so it follows the theme. */
+@media (display-mode: standalone) {
+  .pv-splash {
+    background: #070b16;
+    color-scheme: dark;
+  }
+
+  .pv-splash-hint {
+    color: #8b93ad;
+  }
 }
 
 @keyframes pv-spin {
@@ -854,6 +887,32 @@ button {
 .pv-row:hover .pv-row-actions,
 .pv-grid-card:hover .pv-row-actions {
   opacity: 1;
+}
+
+/* An item with a delete in flight: visibly settled-on, and fully inert so it
+   can't be opened, previewed, re-selected or deleted a second time. The row
+   stays in place (rather than vanishing early) so the list doesn't jump while
+   requests are still running — and comes back if the delete fails. */
+.pv-row--deleting {
+  opacity: 0.5;
+  pointer-events: none;
+  cursor: default;
+}
+
+.pv-row-deleting-mark {
+  display: flex;
+  align-items: center;
+  gap: var(--pv-s2);
+  opacity: 1;
+  font-size: var(--pv-text-xs);
+  color: var(--pv-text-muted);
+  white-space: nowrap;
+}
+
+.pv-row-deleting-mark .pv-spinner {
+  width: 13px;
+  height: 13px;
+  border-width: 1.5px;
 }
 
 /* grid view */

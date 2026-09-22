@@ -3,6 +3,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { DialogsProvider } from '@/components/dialogs';
+import { OfflineBanner } from '@/components/offline-banner';
 import { PwaRegister } from '@/components/pwa-register';
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -18,6 +19,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <PwaRegister />
+      <OfflineBanner />
       <DialogsProvider>{children}</DialogsProvider>
     </QueryClientProvider>
   );

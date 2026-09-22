@@ -22,7 +22,12 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(PRECACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
+      // Cached one at a time on purpose: cache.addAll() is all-or-nothing, so a
+      // single renamed or missing icon would fail the whole install and leave
+      // the app with no worker and no offline page at all.
+      .then((cache) =>
+        Promise.all(PRECACHE_URLS.map((url) => cache.add(url).catch(() => undefined))),
+      )
       .then(() => self.skipWaiting()),
   );
 });
@@ -45,6 +50,14 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   // Never intercept the API, range requests (downloads), or auth traffic.
   if (url.pathname.startsWith('/api/') || request.headers.has('range')) return;
+
+  // Precached assets (the offline page's own artwork, icons). Without this the
+  // install cache was written but never read, so anything offline.html
+  // referenced still went to the network — and rendered broken while offline.
+  if (PRECACHE_URLS.includes(url.pathname)) {
+    event.respondWith(caches.match(request).then((hit) => hit ?? fetch(request)));
+    return;
+  }
 
   // Immutable, content-hashed build assets: cache-first (fast, safe to keep).
   if (url.pathname.startsWith('/_next/static/')) {

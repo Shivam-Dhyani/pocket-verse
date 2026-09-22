@@ -2,12 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Pocketverse — offline</title>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <style>
+      /*
+       * Standalone by design: this page is served by the service worker when the
+       * network is gone, so it must not depend on a single external request —
+       * no stylesheet, no font, and no <img> (the artwork below is inline SVG).
+       * An earlier version referenced /icon.svg and rendered broken offline.
+       */
       :root {
+        --bg: #070b16;
+        --glow: radial-gradient(120% 80% at 50% 0%, #161d3a 0%, #0a1022 55%, #070b16 100%);
+        --text: #e7e9f5;
+        --muted: #8b93ad;
         color-scheme: dark;
+      }
+      :root[data-theme='light'] {
+        --bg: #f4f6fc;
+        --glow: radial-gradient(120% 80% at 50% 0%, #ffffff 0%, #eef1fa 55%, #f4f6fc 100%);
+        --text: #131725;
+        --muted: #5a6280;
+        color-scheme: light;
       }
       * {
         box-sizing: border-box;
@@ -24,26 +41,22 @@
           'Segoe UI',
           Roboto,
           sans-serif;
-        color: #e7e9f5;
-        background:
-          radial-gradient(120% 80% at 50% 0%, #161d3a 0%, #0a1022 55%, #070b16 100%);
+        color: var(--text);
+        background-color: var(--bg);
+        background-image: var(--glow);
         text-align: center;
       }
       .card {
         max-width: 30rem;
       }
-      img {
-        width: 96px;
-        height: 96px;
-      }
       h1 {
-        font-size: 1.4rem;
+        font-size: 1.35rem;
         margin: 20px 0 8px;
       }
       p {
         margin: 0 0 20px;
         line-height: 1.6;
-        color: #a7add0;
+        color: var(--muted);
       }
       button {
         font: inherit;
@@ -55,17 +68,75 @@
         cursor: pointer;
         background: linear-gradient(120deg, #6d6af8, #9d6af8 55%, #4fd1c5);
       }
+      .status {
+        margin-top: 16px;
+        font-size: 0.85rem;
+        color: var(--muted);
+        min-height: 1.2em;
+      }
     </style>
   </head>
   <body>
     <div class="card">
-      <img src="/icon.svg" alt="Pocketverse" />
+      <svg width="96" height="96" viewBox="0 0 512 512" role="img" aria-label="Pocketverse">
+        <defs>
+          <radialGradient id="bg" cx="50%" cy="42%" r="72%">
+            <stop offset="0%" stop-color="#161d3a" />
+            <stop offset="60%" stop-color="#0a1022" />
+            <stop offset="100%" stop-color="#070b16" />
+          </radialGradient>
+          <linearGradient id="ring" x1="14%" y1="18%" x2="88%" y2="86%">
+            <stop offset="0%" stop-color="#6d6af8" />
+            <stop offset="55%" stop-color="#9d6af8" />
+            <stop offset="100%" stop-color="#4fd1c5" />
+          </linearGradient>
+          <radialGradient id="core" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#eef0ff" />
+            <stop offset="70%" stop-color="#b9b6ff" />
+            <stop offset="100%" stop-color="#8f8bf6" />
+          </radialGradient>
+        </defs>
+        <rect width="512" height="512" rx="116" fill="url(#bg)" />
+        <g transform="translate(256 256)">
+          <ellipse
+            rx="182"
+            ry="80"
+            transform="rotate(-24)"
+            fill="none"
+            stroke="url(#ring)"
+            stroke-width="15"
+          />
+          <circle cx="118" cy="-96" r="26" fill="#4fd1c5" />
+          <circle r="52" fill="url(#core)" />
+        </g>
+      </svg>
       <h1>You're offline</h1>
       <p>
         Pocketverse needs a connection to reach your files — they live in your own storage, not on
         this device. Reconnect and you'll pick up right where you left off.
       </p>
-      <button type="button" onclick="location.reload()">Try again</button>
+      <button type="button" id="retry">Try again</button>
+      <div class="status" id="status"></div>
     </div>
+    <script>
+      // Match the app's stored theme so this page isn't a jarring dark flash for
+      // someone using light mode.
+      try {
+        var t = localStorage.getItem('pv-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (e) {}
+
+      var status = document.getElementById('status');
+      document.getElementById('retry').addEventListener('click', function () {
+        status.textContent = navigator.onLine ? 'Reconnecting…' : 'Still offline.';
+        location.reload();
+      });
+      // Recover on its own the moment the network comes back, so the user
+      // doesn't have to notice and tap.
+      window.addEventListener('online', function () {
+        status.textContent = 'Back online — reloading…';
+        location.reload();
+      });
+    </script>
   </body>
 </html>
