@@ -20,12 +20,20 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: '#070b16',
     theme_color: '#070b16',
     categories: ['productivity', 'utilities'],
+    // Raster only, deliberately. Android builds an APK for an installed PWA and
+    // draws the splash from these icons — it does not rasterize SVG. Listing
+    // `icon.svg` with sizes:"any" invited Chrome to pick it as the best match
+    // and then fall back to a generic mark, which is why the installed splash
+    // didn't look like the app. The SVG is still the source art and is still
+    // used as the browser-tab favicon via layout.tsx.
     icons: [
-      // Scalable source — modern browsers prefer it and it never pixelates.
-      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
       { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icon-256.png', sizes: '256x256', type: 'image/png', purpose: 'any' },
+      { src: '/icon-384.png', sizes: '384x384', type: 'image/png', purpose: 'any' },
       { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      // Maskable lets Android crop to its own icon shape without clipping the mark.
+      // Maskable lets Android crop to its own icon shape without clipping the
+      // mark — and on Android 12+ it's what the splash animation uses.
+      { src: '/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
       { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
     ],
   };

@@ -12,7 +12,7 @@
  *
  * Bump CACHE_VERSION to retire old caches on the next activation.
  */
-const CACHE_VERSION = 'pv-v1';
+const CACHE_VERSION = 'pv-v2';
 const PRECACHE = `${CACHE_VERSION}-precache`;
 const RUNTIME = `${CACHE_VERSION}-static`;
 const OFFLINE_URL = '/offline.html';

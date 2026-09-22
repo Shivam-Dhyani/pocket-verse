@@ -138,9 +138,27 @@ installs keep the old copies.
 ## The launch screen (splash)
 
 An installed app gets a splash screen from the OS, built from the manifest
-(`name`, `background_color`, and the icon). You cannot turn it off or restyle
-it — and on Android 12+ the system adds its own icon animation on top of
-Chrome's, which is why a launch can look like two splashes in a row.
+(`name`, `background_color`, and the icon). **You cannot supply a custom splash
+image or layout on Android** — there is no API for it. The OS composes it, and
+the only levers are the three manifest fields above. `AppSplash` below is a
+_matching_ screen, not the OS one. On Android 12+ the system also adds its own
+icon animation on top of Chrome's, which is why a launch can look like two
+splashes in a row.
+
+Two things make the OS splash go wrong, both worth remembering:
+
+1. **Icons must be raster.** Android builds an APK ("WebAPK") for an installed
+   PWA and draws the splash from the manifest icons; it does not rasterize SVG.
+   An `icon.svg` entry with `sizes: "any"` can win Chrome's "best match" pick
+   and then fall back to a generic mark. The manifest therefore lists PNGs only,
+   at several densities, plus maskable 192 and 512 (Android 12+ animates the
+   maskable one). The SVG remains the source art and the tab favicon.
+2. **An installed app keeps its old splash until the WebAPK updates.** The
+   icon, name and colours are baked in at install time. Chrome re-checks the
+   manifest only periodically (roughly daily, and it can take days to apply), so
+   deploying a manifest change does **not** update an already-installed app the
+   way a code change does. To see it immediately, uninstall the app and install
+   it again from Settings.
 
 What you _can_ control is what the app paints when that splash hands off. If the
 first frame looks different — a spinner in a corner, a logo in a new position,

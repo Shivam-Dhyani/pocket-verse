@@ -19,9 +19,15 @@ const svg = await readFile(join(publicDir, 'icon.svg'));
 // zone), flagged maskable in the manifest so Android can crop to its shape.
 // `apple-touch-icon`: iOS ignores transparency and rounds corners itself, so a
 // full-bleed 180px tile is exactly right.
+// Several raster sizes so Chrome can pick one matching the device's density
+// instead of downscaling a single large icon — a mismatched pick is what makes
+// an Android splash look soft or fall back to a generic mark.
 const targets = [
   { file: 'icon-192.png', size: 192 },
+  { file: 'icon-256.png', size: 256 },
+  { file: 'icon-384.png', size: 384 },
   { file: 'icon-512.png', size: 512 },
+  { file: 'icon-maskable-192.png', size: 192 },
   { file: 'icon-maskable-512.png', size: 512 },
   { file: 'apple-touch-icon.png', size: 180 },
 ];
