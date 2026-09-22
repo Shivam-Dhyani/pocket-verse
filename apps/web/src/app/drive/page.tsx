@@ -25,6 +25,7 @@ import {
 } from '@/stores/uploads';
 import { useAuthStore } from '@/stores/auth';
 import { AppHeader } from '@/components/app-header';
+import { AppSplash } from '@/components/app-splash';
 import { SearchBox } from '@/components/search-box';
 import { UploadPanel } from '@/components/upload-panel';
 import { PreviewModal } from '@/components/preview-modal';
@@ -48,7 +49,10 @@ import {
 export default function DrivePage() {
   // useSearchParams needs a Suspense boundary for static prerendering.
   return (
-    <Suspense fallback={null}>
+    // This fallback is the prerendered first paint for /drive — the PWA's
+    // start_url — so it is what the OS splash hands off to. Showing the launch
+    // screen here (not an empty frame) is what makes the two look like one.
+    <Suspense fallback={<AppSplash />}>
       <DriveInner />
     </Suspense>
   );
@@ -516,16 +520,12 @@ function DriveInner() {
   const isEmpty = drive.data && visibleFolders.length === 0 && visibleFiles.length === 0;
 
   if (me.isPending || (me.isSuccess && connection.isPending)) {
-    return (
-      <div className="pv-app">
-        <p className="pv-footnote" style={{ marginTop: '20vh' }}>
-          <span className="pv-spinner" /> Opening your universe…
-        </p>
-      </div>
-    );
+    return <AppSplash />;
   }
   if (me.isError) {
-    return null;
+    // Signing in is next; keep the launch screen up rather than flashing an
+    // empty frame while the redirect to /login happens.
+    return <AppSplash label="Taking you to sign in…" />;
   }
 
   return (

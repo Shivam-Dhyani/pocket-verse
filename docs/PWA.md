@@ -45,15 +45,18 @@ Two design rules shape everything below:
 
 ## Files changed
 
-| File                                    | Change                                                                                                                                                                                   |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web/src/app/layout.tsx`           | Added PWA metadata: `manifest`, `icons` (favicon + apple-touch-icon), `appleWebApp` (iOS standalone + status bar), and a `viewport` export with `themeColor` and `viewportFit: 'cover'`. |
-| `apps/web/src/components/providers.tsx` | Mounts `<PwaRegister />` at app root.                                                                                                                                                    |
-| `apps/web/src/app/security/page.tsx`    | Renders `<InstallApp />` in the Settings section.                                                                                                                                        |
-| `apps/web/src/lib/analytics.ts`         | Added `app_installed` to the analytics event allow-list (fires only on a successful install; no identifying data).                                                                       |
-| `apps/web/next.config.ts`               | `must-revalidate` cache headers for `/sw.js` and `/manifest.webmanifest`, so a cached worker can't stall updates.                                                                        |
-| `apps/web/package.json`                 | Added the `icons` script and `sharp` devDependency.                                                                                                                                      |
-| `apps/web/src/app/globals.css`          | Added `.pv-install-done` / `.pv-install-steps` styles for the install card.                                                                                                              |
+| File                                     | Change                                                                                                                                                                                      |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/app/layout.tsx`            | Added PWA metadata: `manifest`, `icons` (favicon + apple-touch-icon), `appleWebApp` (iOS standalone + status bar), and a `viewport` export with `themeColor` and `viewportFit: 'cover'`.    |
+| `apps/web/src/components/providers.tsx`  | Mounts `<PwaRegister />` at app root.                                                                                                                                                       |
+| `apps/web/src/app/security/page.tsx`     | Renders `<InstallApp />` in the Settings section.                                                                                                                                           |
+| `apps/web/src/lib/analytics.ts`          | Added `app_installed` to the analytics event allow-list (fires only on a successful install; no identifying data).                                                                          |
+| `apps/web/next.config.ts`                | `must-revalidate` cache headers for `/sw.js` and `/manifest.webmanifest`, so a cached worker can't stall updates; plus the `/api/auth/*` rewrite that keeps the refresh cookie first-party. |
+| `apps/web/src/components/app-splash.tsx` | The launch screen painted at first render, mirroring the manifest splash.                                                                                                                   |
+| `apps/web/src/lib/api.ts`                | Auth requests go to our own origin (proxied); file traffic still hits the API directly.                                                                                                     |
+| `apps/web/src/app/drive/page.tsx`        | Renders `<AppSplash/>` as the Suspense fallback and while redirecting to sign-in.                                                                                                           |
+| `apps/web/package.json`                  | Added the `icons` script and `sharp` devDependency.                                                                                                                                         |
+| `apps/web/src/app/globals.css`           | Added `.pv-install-done` / `.pv-install-steps` styles for the install card.                                                                                                                 |
 
 ## How the opt-in install flow works
 
@@ -131,6 +134,47 @@ running upload would be worse than showing slightly old UI until next launch.
 One caveat: things in `PRECACHE_URLS` (`offline.html`, icons) are written once
 per worker version. If you edit those, **bump `CACHE_VERSION`** or existing
 installs keep the old copies.
+
+## The launch screen (splash)
+
+An installed app gets a splash screen from the OS, built from the manifest
+(`name`, `background_color`, and the icon). You cannot turn it off or restyle
+it — and on Android 12+ the system adds its own icon animation on top of
+Chrome's, which is why a launch can look like two splashes in a row.
+
+What you _can_ control is what the app paints when that splash hands off. If the
+first frame looks different — a spinner in a corner, a logo in a new position,
+or a blank frame — it reads as a second splash appearing. So `AppSplash`
+(`components/app-splash.tsx`) deliberately mirrors the manifest splash:
+
+- the same background as `background_color` (`#070b16`),
+- the same icon artwork, inlined as SVG (not `<img src="/icon.svg">`) so it
+  costs no request and cannot flash in late,
+- the app name below it, matching what the OS splash prints,
+- and **no animation at all** — any entrance transition re-introduces exactly
+  the "second screen" effect we're removing.
+
+It is server-rendered (no `'use client'`), so it is in the prerendered HTML for
+`/drive` — the manifest's `start_url`, and therefore the first paint the OS
+splash hands off to. It is also used while the drive redirects to sign-in, so
+that path shows the launch screen instead of an empty frame.
+
+If you change `background_color` in the manifest, change `.pv-splash`'s
+background to match, or the seam becomes visible again.
+
+## Staying signed in (why auth is proxied)
+
+The web app and the API are different sites (`*.vercel.app` →
+`*.onrender.com`), which made the httpOnly refresh cookie a **third-party
+cookie**. Safari blocks those outright and Chrome increasingly does too, so the
+cookie was dropped and the session ended as soon as the in-memory access token
+went away — i.e. every time the tab or the app was closed.
+
+Fix: `next.config.ts` rewrites `/api/auth/:path*` to the API, and
+`lib/api.ts` requests those paths from the app's own origin. The cookie is then
+set by our origin and is simply first-party. Uploads and downloads are
+deliberately **not** proxied — they stream multi-GB bodies straight to the API,
+which a serverless proxy could not carry.
 
 ## Regenerating the icons
 

@@ -409,6 +409,45 @@ button {
   display: inline-block;
 }
 
+/* Launch screen — deliberately matches the PWA manifest splash (same
+   background_color, same mark, centred) so the OS splash and the app's first
+   paint look like one continuous screen. Nothing here animates or moves: any
+   entrance transition would read as a second splash. */
+.pv-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pv-s4);
+  background: var(--pv-bg);
+  /* Keep the lockup clear of the notch / home indicator on installed apps. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+.pv-splash svg {
+  color: var(--pv-accent);
+}
+
+.pv-splash-name {
+  font-family: var(--pv-font-display);
+  font-size: var(--pv-text-xl);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: var(--pv-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+.pv-splash-hint {
+  font-size: var(--pv-text-sm);
+  color: var(--pv-text-muted);
+}
+
 @keyframes pv-spin {
   to {
     transform: rotate(360deg);

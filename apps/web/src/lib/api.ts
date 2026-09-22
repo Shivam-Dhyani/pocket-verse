@@ -3,6 +3,22 @@ import { useAuthStore } from '@/stores/auth';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
+/**
+ * Auth endpoints are requested from our OWN origin and proxied to the API by a
+ * rewrite in next.config.ts. That is what keeps the httpOnly refresh cookie
+ * first-party — hitting the API's origin directly would make it a third-party
+ * cookie, which browsers drop, ending the session as soon as the tab closes.
+ * Everything else (uploads, downloads, drive data) still talks to the API
+ * directly, so large file streams never pass through a serverless proxy.
+ */
+function originFor(path: string): string {
+  // Relative URLs only resolve in the browser; SSR keeps the absolute origin.
+  if (typeof window !== 'undefined' && path.startsWith('/api/auth/')) {
+    return '';
+  }
+  return API_URL;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -27,7 +43,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(`${originFor(path)}${path}`, {
       method: options.method ?? 'GET',
       credentials: 'include',
       headers: {
@@ -84,7 +100,7 @@ export async function apiFetch(
   const { accessToken } = useAuthStore.getState();
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(`${originFor(path)}${path}`, {
       credentials: 'include',
       ...init,
       headers: {

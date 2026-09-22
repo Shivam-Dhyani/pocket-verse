@@ -22,10 +22,16 @@ export function createAuthController({ service, secureCookies }: AuthControllerD
   // site cookies require SameSite=None together with Secure; locally (same
   // site, plain http) Strict is the tighter and working choice.
   const sameSite = secureCookies ? 'none' : 'strict';
+  // The web app proxies /api/auth through its own origin, so in the normal path
+  // this cookie is first-party. `Partitioned` (CHIPS) covers the case where the
+  // API is called cross-site directly: browsers that block third-party cookies
+  // still keep a partitioned one, keyed to the embedding site. Browsers that
+  // don't know the attribute ignore it, so it is safe to always send.
   const cookieOptions = (expiresAt: Date): CookieOptions => ({
     httpOnly: true,
     secure: secureCookies,
     sameSite,
+    partitioned: secureCookies,
     path: '/api/auth',
     expires: expiresAt,
   });
@@ -39,7 +45,14 @@ export function createAuthController({ service, secureCookies }: AuthControllerD
   }
 
   function clearRefreshCookie(res: Response): void {
-    res.clearCookie(REFRESH_COOKIE, { path: '/api/auth', secure: secureCookies, sameSite });
+    // Clearing must mirror the attributes the cookie was set with, or the
+    // browser treats it as a different cookie and the old one survives.
+    res.clearCookie(REFRESH_COOKIE, {
+      path: '/api/auth',
+      secure: secureCookies,
+      sameSite,
+      partitioned: secureCookies,
+    });
   }
 
   return {

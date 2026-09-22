@@ -138,6 +138,26 @@ The repo contains `render.yaml`, so use a Blueprint deploy:
    schema, then `/health` goes green.
 4. Note the service URL, e.g. `https://pocketverse-api.onrender.com`.
 
+### Staying signed in: auth is proxied through the web origin
+
+The web app requests `/api/auth/*` from **its own origin**; a rewrite in
+`apps/web/next.config.ts` forwards those to the API. This is what keeps the
+httpOnly refresh cookie first-party — called cross-site, browsers treat it as a
+third-party cookie and drop it, which silently ends every session when the tab
+or app closes.
+
+Consequences worth knowing:
+
+- **`NEXT_PUBLIC_API_URL` must be set at build time on Vercel.** The rewrite
+  destination is read from it when the app is built. If it's missing, auth is
+  proxied to `http://localhost:4000` and every sign-in fails in production.
+- Only auth is proxied. Uploads and downloads still go **straight** to the API,
+  because they stream multi-GB bodies that a serverless proxy can't carry.
+- Auth requests now reach the API from Vercel's IPs. Rate limiting still keys on
+  the real client IP via `X-Forwarded-For` (the API runs with `trust proxy`),
+  but keep that in mind if limits ever look wrong.
+- `CORS_ORIGIN` is still required — file traffic remains cross-origin.
+
 ### Password-reset email (read this if "forgot password" sends nothing)
 
 Password reset is the **only** email Pocketverse sends, and it is off unless
