@@ -242,62 +242,41 @@ stays dark (it's the fixed window background). Dark icons on a dark band.
 | `body` padding = `env(safe-area-inset-*)` | `globals.css`  | Keeps content clear of the bars. Insets are `0` when the page isn't under them, so nothing moves on devices that don't support it.                                   |
 | `body::before` strip                      | `globals.css`  | Paints the area behind the status bar so content scrolling up doesn't pass behind the clock. Uses the _same_ viewport-fixed background as `html`, so it is seamless. |
 | Page background on `html`, not `body`     | `globals.css`  | The root's background covers the whole canvas whatever the content height. On `body` it stopped where the content did, leaving a flat band on short pages.           |
-| Adaptive `theme-color`                    | `lib/theme.ts` | See below.                                                                                                                                                           |
+| `theme-color` = app theme, always         | `lib/theme.ts` | What the installed app's navigation bar follows (Chrome 153+). See below.                                                                                            |
 | One colour source                         | `lib/theme.ts` | Manifest, pre-paint script and runtime all read `THEME_COLORS` / `MANIFEST_BACKGROUND`. Mismatched values between these produce a visible seam.                      |
 
-### Adaptive `theme-color` (`detectSystemBars()`)
+### What each bar follows (confirmed on a real device)
 
-`theme-color` normally follows the app theme. The single exception: when the app
-is installed, the page does **not** extend under the status bar (safe-area inset
-is `0`), and the device is on **Android 15+**. In that case the band is stuck on
-`MANIFEST_BACKGROUND`, so `theme-color` is pinned to it — otherwise light mode
-puts dark icons on a dark band. The result is persisted (`pv-bars-fixed`) so the
-pre-paint script gets it right on the next launch with no flicker, and it is
-re-checked on every launch and on resize, so the pin lifts automatically once a
-Chrome update starts drawing the app under the bars.
+Tested on a Samsung phone (Android 15, 3-button navigation), and consistent with
+Chromium's bug tracker (40759522, 554055703):
 
-| Situation                                           | Bar background             | `theme-color` |
-| --------------------------------------------------- | -------------------------- | ------------- |
-| Browser tab                                         | browser's own UI           | follows theme |
-| Installed, Android ≤ 14                             | painted from `theme-color` | follows theme |
-| Installed, Android 15+, page under the bars         | our page                   | follows theme |
-| Installed, Android 15+, page **not** under the bars | fixed manifest colour      | pinned to it  |
+| Bar                         | Follows                                                                                                        | Can the app change it live?                                                                                                                                                                                                                               |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status bar** (top)        | the `theme_color` baked into the installed app at install time                                                 | **No.** Runtime `<meta name="theme-color">` never reaches it, and the old `color_scheme_dark` manifest member is no longer parsed. It changes only when Chrome rebuilds the app (daily check, only while charging on unmetered networks) or on reinstall. |
+| **Navigation bar** (bottom) | the page's live `<meta name="theme-color">` on **Chrome 153+**; the phone's light/dark setting on older Chrome | **Yes**, on Chrome 153+                                                                                                                                                                                                                                   |
 
-The Android version comes from `navigator.userAgentData` (the UA string is frozen
-at "Android 10" by Chrome's UA reduction). If it can't be determined, the app
-assumes the bar follows `theme-color` — the historical behaviour — so detection
-can only ever improve on the default.
+So `applyTheme()` always sets `theme-color` to the app's **own** theme colour —
+never anything else — and the navigation bar follows the in-app toggle.
 
-### What was confirmed on a real device
+**Don't pin `theme-color`.** An earlier version pinned it to the dark manifest
+colour on installed Android 15+ apps, to protect the status bar's icons. The
+status bar never reads `theme-color`, so the pin did nothing there — and it held
+the navigation bar dark in light mode. ThemeSync now clears its leftover
+`pv-bars-fixed` storage flag.
 
-Tested on a Samsung phone (Android 15, 3-button navigation):
+### Theme preference
 
-- The **navigation bar follows the phone's light/dark setting**, whatever
-  theme the app is in.
-- The **status bar band is the `theme_color` baked into the installed app** at
-  install time. Chromium paints an installed app's top bar from that baked
-  value only; runtime `<meta name="theme-color">` does not reach it, and the old
-  `color_scheme_dark` manifest member is no longer parsed. It changes only when
-  Chrome rebuilds the app (daily check, only while charging on unmetered
-  networks) or on reinstall.
-
-So no web code can make the installed app's system bars follow an in-app
-toggle. That's why the theme preference defaults to **Match device**
-(`ThemePreference = 'system'`, stored under `pv-theme-pref`): the app follows
-the phone, so app and navigation bar agree. Picking Light or Dark by hand still
-works for the app itself; the phone's bars keep following the phone.
-
+The theme is **Match device** (default, `ThemePreference = 'system'`) / Light /
+Dark, stored under `pv-theme-pref` and saved only when the user picks one.
 `pv-theme-pref` replaced the old `pv-theme` key on purpose: the old two-state
 toggle wrote `dark` on every mount, so that value never meant a real choice.
 
 ### Limits worth knowing
 
-- **3-button navigation:** Chrome only extends pages under the _gesture_ bar. With
-  the 3-button bar, no web page can colour it in an installed app; it shows the
-  window background. Gesture navigation doesn't have this limit.
-- A light status bar in light mode requires Chrome to draw the installed app
-  under the status bar. Where it doesn't, the best any page can do is legible
-  icons on the fixed band — which is what the pin guarantees.
+- The **status bar** can't follow the in-app theme (see above). It keeps the
+  colour baked in at install.
+- On **Chrome older than 153** the navigation bar follows the phone's setting,
+  not the app. Updating Chrome is the fix; nothing in the page can override it.
 
 ## Regenerating the icons
 

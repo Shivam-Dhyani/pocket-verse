@@ -4,7 +4,7 @@ import '@fontsource-variable/inter';
 import '@fontsource-variable/space-grotesk';
 import { Analytics } from '@/components/analytics';
 import { Providers } from '@/components/providers';
-import { BARS_FIXED_KEY, MANIFEST_BACKGROUND, THEME_COLORS, THEME_PREF_KEY } from '@/lib/theme';
+import { THEME_COLORS, THEME_PREF_KEY } from '@/lib/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -42,16 +42,13 @@ export const viewport: Viewport = {
 };
 
 /**
- * Runs before paint so the right theme is on screen from the first frame —
- * the stored choice, or the phone's own setting when the choice is 'system'
- * (the default) — and sets
- * `theme-color` in the same pass. It also honours the stored result of
- * detectSystemBars(): on a device where the status bar band is stuck on the
- * manifest colour, following the light theme would put dark icons on a dark
- * band, so the colour is pinned to match the band instead. Colours come from
- * lib/theme so this can never drift from the runtime or the manifest.
+ * Runs before paint so the right theme is on screen from the first frame — the
+ * stored choice, or the phone's own setting when the choice is 'system' (the
+ * default) — and sets `theme-color` to match. In the installed Android app that
+ * tag is what the navigation bar follows (Chrome 153+), so it must always be the
+ * app's own theme colour. Colours come from lib/theme so this can't drift.
  */
-const themeInit = `try{var p=localStorage.getItem('${THEME_PREF_KEY}');var t=p==='light'||p==='dark'?p:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.dataset.theme=t;var f=localStorage.getItem('${BARS_FIXED_KEY}')==='1'&&matchMedia('(display-mode: standalone)').matches;var c=f?'${MANIFEST_BACKGROUND}':(t==='light'?'${THEME_COLORS.light}':'${THEME_COLORS.dark}');var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++)m[i].remove();var n=document.createElement('meta');n.name='theme-color';n.content=c;document.head.appendChild(n)}catch(e){}`;
+const themeInit = `try{var p=localStorage.getItem('${THEME_PREF_KEY}');var t=p==='light'||p==='dark'?p:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.dataset.theme=t;var c=t==='light'?'${THEME_COLORS.light}':'${THEME_COLORS.dark}';var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++)m[i].remove();var n=document.createElement('meta');n.name='theme-color';n.content=c;document.head.appendChild(n)}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

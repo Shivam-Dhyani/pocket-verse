@@ -96,9 +96,7 @@ export function AppearanceSetting() {
         })}
       </div>
       <p className="pv-sub" style={{ marginTop: 'var(--pv-s3)' }}>
-        <strong>Match device</strong> follows your phone or computer’s light/dark setting. In the
-        installed app on Android, the phone’s own bars take their colour from the phone rather than
-        from Pocketverse, so Match device is the setting that keeps the two in step.
+        <strong>Match device</strong> follows your phone or computer’s light/dark setting.
       </p>
     </section>
   );
