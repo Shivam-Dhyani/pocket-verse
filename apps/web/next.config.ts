@@ -4,8 +4,15 @@ import { withSentryConfig } from '@sentry/nextjs';
 // Where the Express API actually lives. Used only to proxy auth calls (below).
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
 
+// Identifies this deploy. Baked into the client bundle AND served live at
+// /version.json, so a running app (notably an installed iOS app, which resumes
+// from memory for days without reloading) can tell it is out of date and offer
+// an update — see components/update-prompt.tsx.
+const BUILD_ID = process.env.VERCEL_GIT_COMMIT_SHA || `local-${Date.now()}`;
+
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  env: { NEXT_PUBLIC_BUILD_ID: BUILD_ID },
   async rewrites() {
     return [
       {
@@ -39,6 +46,12 @@ const nextConfig: NextConfig = {
           { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
           { key: 'Service-Worker-Allowed', value: '/' },
         ],
+      },
+      {
+        // Must never be cached anywhere, or a running app would keep reading
+        // the old build id and never learn a new version shipped.
+        source: '/version.json',
+        headers: [{ key: 'Cache-Control', value: 'no-store, max-age=0' }],
       },
       {
         source: '/manifest.webmanifest',

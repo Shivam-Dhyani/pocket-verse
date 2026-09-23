@@ -2,10 +2,17 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
-import { applyTheme, LEGACY_BARS_FIXED_KEY, storedPreference, storedTheme } from '@/lib/theme';
+import {
+  applyTheme,
+  FORCED_THEME,
+  LEGACY_BARS_FIXED_KEY,
+  storedPreference,
+  storedTheme,
+} from '@/lib/theme';
 import { DialogsProvider } from '@/components/dialogs';
 import { OfflineBanner } from '@/components/offline-banner';
 import { PwaRegister } from '@/components/pwa-register';
+import { UpdatePrompt } from '@/components/update-prompt';
 
 /**
  * Re-asserts the theme (and with it the status-bar colour) at app root. The
@@ -26,7 +33,7 @@ function ThemeSync() {
     // the app is open updates the app at once, alongside the system bars.
     const scheme = window.matchMedia('(prefers-color-scheme: light)');
     const onSchemeChange = () => {
-      if (storedPreference() === 'system') {
+      if (!FORCED_THEME && storedPreference() === 'system') {
         applyTheme(storedTheme());
       }
     };
@@ -52,7 +59,10 @@ export function Providers({ children }: { children: ReactNode }) {
       <ThemeSync />
       <PwaRegister />
       <OfflineBanner />
-      <DialogsProvider>{children}</DialogsProvider>
+      <DialogsProvider>
+        {children}
+        <UpdatePrompt />
+      </DialogsProvider>
     </QueryClientProvider>
   );
 }

@@ -42,6 +42,9 @@ Two design rules shape everything below:
 | `apps/web/src/stores/pwa.ts`                                                                    | Zustand store holding the captured install event + installed state, plus `isStandalone()` / `isIos()` helpers.                                                                                     |
 | `apps/web/src/components/pwa-register.tsx`                                                      | Mounted once at app root. Registers the service worker and intercepts `beforeinstallprompt` to stop the automatic banner. Renders nothing.                                                         |
 | `apps/web/src/components/install-app.tsx`                                                       | The opt-in "Install the app" card rendered in Settings.                                                                                                                                            |
+| `apps/web/src/components/update-prompt.tsx`                                                     | "New version available" toast. Compares `/version.json` against the build this page was built from. See "The update prompt".                                                                       |
+| `apps/web/src/app/version.json/route.ts`                                                        | Serves the deployed build id (`no-store`).                                                                                                                                                         |
+| `apps/web/scripts/gen-ios-splash.mjs`, `src/lib/ios-splash-devices.json`, `public/splash/*.png` | iOS launch images, one per device screen size.                                                                                                                                                     |
 
 ## Files changed
 
@@ -142,9 +145,31 @@ Why that holds here, concretely:
    if a CDN serves a stale worker, updates stall — it's the most common reason a
    PWA "won't update".
 
+### The update prompt (why "next launch" isn't enough on its own)
+
+"Next launch" assumes the app actually reloads when reopened. **iOS doesn't:**
+an installed app resumes from memory, often for days, so a user can sit on an
+old build long after a deploy. The service worker can't flag it either — our
+`sw.js` bytes don't change between deploys, so the browser never sees a new
+worker. So the app asks the server directly:
+
+- `next.config.ts` sets a build id (`VERCEL_GIT_COMMIT_SHA`, or `local-<time>`
+  outside Vercel) and inlines it into the client as `NEXT_PUBLIC_BUILD_ID`.
+- `app/version.json/route.ts` serves the deployed build id (static, but
+  `no-store` so no browser or CDN answers with an old copy).
+- `components/update-prompt.tsx` fetches it on launch, whenever the app returns
+  to the foreground (the iOS "reopen" case), when the network comes back, and
+  every 30 minutes while open. If the id differs, it shows a small
+  _"A new version of Pocketverse is available — Update"_ toast. Update reloads;
+  × hides it until the next launch.
+
+This helps Android and desktop too (a long-open tab gets told as well).
+
 Deliberately **not** done: we never force-reload a page that's already open. An
 upload only survives while the tab lives, so yanking the page out from under a
 running upload would be worse than showing slightly old UI until next launch.
+The update toast is only an offer, and if uploads are running, Update asks for
+confirmation first.
 
 One caveat: things in `PRECACHE_URLS` (`offline.html`, icons) are written once
 per worker version. If you edit those, **bump `CACHE_VERSION`** or existing
@@ -194,6 +219,24 @@ that path shows the launch screen instead of an empty frame.
 
 If you change `background_color` in the manifest, change `.pv-splash`'s
 background to match, or the seam becomes visible again.
+
+### iOS launch images
+
+iOS ignores the manifest splash. Instead it shows an
+`apple-touch-startup-image`, and only when one matches the screen's exact size
+(by media query). With none, the user sees a blank white screen while the app
+starts. `layout.tsx` links one PNG per device in
+`src/lib/ios-splash-devices.json` (`public/splash/apple-splash-<W>x<H>.png`).
+`scripts/gen-ios-splash.mjs` renders them in Chromium from the same dark lockup
+as `AppSplash`, so the hand-off looks seamless. After changing the launch screen or adding a
+device:
+
+```bash
+CHROMIUM_PATH=/path/to/chromium pnpm --filter @pocketverse/web ios-splash
+```
+
+iOS caches these at install time. To see a change, remove the app from the Home
+Screen and add it again.
 
 ## Staying signed in (why auth is proxied)
 
@@ -264,7 +307,19 @@ status bar never reads `theme-color`, so the pin did nothing there — and it he
 the navigation bar dark in light mode. ThemeSync now clears its leftover
 `pv-bars-fixed` storage flag.
 
-### Theme preference
+### Dark only, for now (`FORCED_THEME`)
+
+The app is **locked to dark**: `FORCED_THEME = 'dark'` in `lib/theme.ts`. With it
+set, the pre-paint script, `ThemeSync` and `resolveTheme()` all ignore both the
+phone's light/dark setting and any stored preference. The header toggle and the
+Settings "Appearance" control are hidden, and `color-scheme` is `dark` only.
+Why: the installed Android app's status bar stays the colour baked in at
+install time, so light mode would always show a dark band above a light page.
+Everything built for light mode (the `[data-theme='light']` styles, the toggle,
+the `Match device` preference) is still in place. Set `FORCED_THEME = null` to
+bring it back.
+
+### Theme preference (when not locked)
 
 The theme is **Match device** (default, `ThemePreference = 'system'`) / Light /
 Dark, stored under `pv-theme-pref` and saved only when the user picks one.

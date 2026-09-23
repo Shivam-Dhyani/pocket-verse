@@ -7,6 +7,19 @@ export type Theme = 'dark' | 'light';
 export type ThemePreference = 'system' | Theme;
 
 /**
+ * THE SWITCH. While set, the app is locked to this theme: no toggle is shown,
+ * stored preferences are ignored, and the phone's light/dark setting has no
+ * effect. Set to `null` to bring back the Match device / Light / Dark choice —
+ * all the light-mode styling (globals.css), the preference storage below, and
+ * the controls in components/theme-toggle.tsx are kept intact for that.
+ *
+ * Locked to dark because an installed Android app's system bars can't reliably
+ * follow an in-app theme (see docs/PWA.md), so light mode couldn't look right
+ * there.
+ */
+export const FORCED_THEME: Theme | null = 'dark';
+
+/**
  * Page background per theme — the single source of truth for every place the
  * app's colour reaches outside the page: the theme-color meta (phone status
  * bar), the pre-paint script in layout.tsx, and the manifest. Keep in sync
@@ -104,6 +117,9 @@ export function systemTheme(): Theme {
 }
 
 export function resolveTheme(preference: ThemePreference): Theme {
+  if (FORCED_THEME) {
+    return FORCED_THEME;
+  }
   return preference === 'system' ? systemTheme() : preference;
 }
 

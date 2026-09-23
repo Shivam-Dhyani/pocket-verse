@@ -8,6 +8,7 @@ import type { StatsDto } from '@pocketverse/shared';
 import { api, request } from '@/lib/api';
 import { ActivityIcon, InfoIcon, OrbitLogo, ShieldIcon } from '@/components/icons';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { FORCED_THEME } from '@/lib/theme';
 import { useDialogs } from '@/components/dialogs';
 import { formatSize } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth';
@@ -67,7 +68,8 @@ export function AppHeader({ children }: { children?: React.ReactNode }) {
         >
           <ActivityIcon />
         </Link>
-        <ThemeToggle />
+        {/* Hidden while the theme is locked (lib/theme FORCED_THEME). */}
+        {!FORCED_THEME && <ThemeToggle />}
         <button
           className="pv-iconbtn"
           type="button"

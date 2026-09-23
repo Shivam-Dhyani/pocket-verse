@@ -7,6 +7,7 @@ import { AppHeader } from '@/components/app-header';
 import { ConnectionManager } from '@/components/connection-manager';
 import { InstallApp } from '@/components/install-app';
 import { AppearanceSetting } from '@/components/theme-toggle';
+import { FORCED_THEME } from '@/lib/theme';
 import { LockIcon, ShieldIcon } from '@/components/icons';
 
 export default function SecurityPage() {
@@ -22,7 +23,7 @@ export default function SecurityPage() {
 
         <ConnectionManager />
         <AccountSecurity />
-        <AppearanceSetting />
+        {!FORCED_THEME && <AppearanceSetting />}
         <InstallApp />
 
         <Accordion>
