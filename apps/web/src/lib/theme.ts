@@ -1,6 +1,13 @@
 export type Theme = 'dark' | 'light';
 
 /**
+ * What the user chose. 'system' (the default) follows the phone/OS setting —
+ * which is what keeps an installed app's system bars in agreement with it,
+ * since on Android those bars follow the OS, not the page.
+ */
+export type ThemePreference = 'system' | Theme;
+
+/**
  * Page background per theme — the single source of truth for every place the
  * app's colour reaches outside the page: the theme-color meta (phone status
  * bar), the pre-paint script in layout.tsx, and the manifest. Keep in sync
@@ -20,7 +27,12 @@ export const THEME_COLORS: Record<Theme, string> = {
  */
 export const MANIFEST_BACKGROUND = THEME_COLORS.dark;
 
-export const THEME_KEY = 'pv-theme';
+/**
+ * Storage key for the preference. Deliberately NOT the old 'pv-theme': the old
+ * two-state toggle wrote 'dark' on every mount, so its value never meant a real
+ * choice — honouring it would have kept every existing user off 'system'.
+ */
+export const THEME_PREF_KEY = 'pv-theme-pref';
 /** Persisted result of detectSystemBars(), so the next launch paints right. */
 export const BARS_FIXED_KEY = 'pv-bars-fixed';
 
@@ -80,16 +92,46 @@ export function applyTheme(theme: Theme): void {
   document.head.appendChild(meta);
 }
 
-/** The theme in effect: the stored choice, else the app default (dark). */
-export function storedTheme(): Theme {
+/** The stored preference; 'system' when nothing (or nothing valid) is stored. */
+export function storedPreference(): ThemePreference {
+  if (typeof window === 'undefined') {
+    return 'system';
+  }
+  try {
+    const value = window.localStorage.getItem(THEME_PREF_KEY);
+    return value === 'light' || value === 'dark' ? value : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+export function savePreference(preference: ThemePreference): void {
+  try {
+    if (preference === 'system') {
+      window.localStorage.removeItem(THEME_PREF_KEY);
+    } else {
+      window.localStorage.setItem(THEME_PREF_KEY, preference);
+    }
+  } catch {
+    // storage unavailable: the choice still applies for this session
+  }
+}
+
+/** The OS/phone's current scheme. */
+export function systemTheme(): Theme {
   if (typeof window === 'undefined') {
     return 'dark';
   }
-  try {
-    return window.localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
-  } catch {
-    return 'dark';
-  }
+  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+export function resolveTheme(preference: ThemePreference): Theme {
+  return preference === 'system' ? systemTheme() : preference;
+}
+
+/** The theme in effect right now. */
+export function storedTheme(): Theme {
+  return resolveTheme(storedPreference());
 }
 
 /** How far the page extends under the status bar, in px (0 = it doesn't). */

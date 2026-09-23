@@ -201,6 +201,14 @@ export const MoonIcon = (p: SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+/** Theme follows the device: a half-lit disc. */
+export const AutoThemeIcon = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="8" />
+    <path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const ActivityIcon = (p: SVGProps<SVGSVGElement>) => (
   <svg {...base(p)}>
     <path d="M3 12h4l2.5-6.5 5 13L17 12h4" />

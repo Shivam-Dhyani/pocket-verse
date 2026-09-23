@@ -2,7 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
-import { applyTheme, detectSystemBars, storedTheme } from '@/lib/theme';
+import { applyTheme, detectSystemBars, storedPreference, storedTheme } from '@/lib/theme';
 import { DialogsProvider } from '@/components/dialogs';
 import { OfflineBanner } from '@/components/offline-banner';
 import { PwaRegister } from '@/components/pwa-register';
@@ -21,7 +21,21 @@ function ThemeSync() {
     void detectSystemBars();
     const onResize = () => void detectSystemBars();
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+
+    // On 'system', follow the phone live: flipping its dark/light setting while
+    // the app is open updates the app at once, alongside the system bars.
+    const scheme = window.matchMedia('(prefers-color-scheme: light)');
+    const onSchemeChange = () => {
+      if (storedPreference() === 'system') {
+        applyTheme(storedTheme());
+      }
+    };
+    scheme.addEventListener('change', onSchemeChange);
+
+    return () => {
+      window.removeEventListener('resize', onResize);
+      scheme.removeEventListener('change', onSchemeChange);
+    };
   }, []);
   return null;
 }

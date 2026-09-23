@@ -1133,6 +1133,48 @@ button {
   font-size: var(--pv-text-sm);
 }
 
+/* Segmented control (Settings → Appearance): every option visible at once. */
+.pv-segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--pv-border);
+  border-radius: 999px;
+  background: var(--pv-surface-raised);
+}
+
+.pv-segmented button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pv-s2);
+  padding: 7px 14px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--pv-text-muted);
+  font-size: var(--pv-text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background var(--pv-fast),
+    color var(--pv-fast);
+}
+
+.pv-segmented button:hover {
+  color: var(--pv-text);
+}
+
+.pv-segmented button.active {
+  background: var(--pv-surface-solid);
+  color: var(--pv-text);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
+}
+
+.pv-segmented button.active svg {
+  color: var(--pv-accent);
+}
+
 /* Install-the-app card (Settings) */
 .pv-install-done {
   display: flex;

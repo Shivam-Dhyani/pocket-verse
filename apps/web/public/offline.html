@@ -122,8 +122,14 @@
       // Match the app's stored theme so this page isn't a jarring dark flash for
       // someone using light mode.
       try {
-        var t = localStorage.getItem('pv-theme');
-        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+        var p = localStorage.getItem('pv-theme-pref');
+        var t =
+          p === 'light' || p === 'dark'
+            ? p
+            : matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+        document.documentElement.dataset.theme = t;
       } catch (e) {}
 
       var status = document.getElementById('status');

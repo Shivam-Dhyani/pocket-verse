@@ -268,6 +268,28 @@ at "Android 10" by Chrome's UA reduction). If it can't be determined, the app
 assumes the bar follows `theme-color` — the historical behaviour — so detection
 can only ever improve on the default.
 
+### What was confirmed on a real device
+
+Tested on a Samsung phone (Android 15, 3-button navigation):
+
+- The **navigation bar follows the phone's light/dark setting**, whatever
+  theme the app is in.
+- The **status bar band is the `theme_color` baked into the installed app** at
+  install time. Chromium paints an installed app's top bar from that baked
+  value only; runtime `<meta name="theme-color">` does not reach it, and the old
+  `color_scheme_dark` manifest member is no longer parsed. It changes only when
+  Chrome rebuilds the app (daily check, only while charging on unmetered
+  networks) or on reinstall.
+
+So no web code can make the installed app's system bars follow an in-app
+toggle. That's why the theme preference defaults to **Match device**
+(`ThemePreference = 'system'`, stored under `pv-theme-pref`): the app follows
+the phone, so app and navigation bar agree. Picking Light or Dark by hand still
+works for the app itself; the phone's bars keep following the phone.
+
+`pv-theme-pref` replaced the old `pv-theme` key on purpose: the old two-state
+toggle wrote `dark` on every mount, so that value never meant a real choice.
+
 ### Limits worth knowing
 
 - **3-button navigation:** Chrome only extends pages under the _gesture_ bar. With
