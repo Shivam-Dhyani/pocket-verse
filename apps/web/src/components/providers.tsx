@@ -2,7 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useEffect, useState, type ReactNode } from 'react';
-import { applyTheme, storedTheme } from '@/lib/theme';
+import { applyTheme, detectSystemBars, storedTheme } from '@/lib/theme';
 import { DialogsProvider } from '@/components/dialogs';
 import { OfflineBanner } from '@/components/offline-banner';
 import { PwaRegister } from '@/components/pwa-register';
@@ -16,6 +16,12 @@ import { PwaRegister } from '@/components/pwa-register';
 function ThemeSync() {
   useEffect(() => {
     applyTheme(storedTheme());
+    // Then find out whether this device lets the page colour its status bar at
+    // all (see lib/theme); insets change on rotation, so re-check on resize.
+    void detectSystemBars();
+    const onResize = () => void detectSystemBars();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
   return null;
 }

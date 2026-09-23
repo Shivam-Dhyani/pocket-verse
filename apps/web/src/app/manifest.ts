@@ -1,4 +1,5 @@
 import type { MetadataRoute } from 'next';
+import { MANIFEST_BACKGROUND } from '@/lib/theme';
 
 /**
  * Web app manifest — the file that makes Pocketverse installable as a PWA.
@@ -17,8 +18,12 @@ export default function manifest(): MetadataRoute.Manifest {
     id: '/',
     scope: '/',
     display: 'standalone',
-    background_color: '#070b16',
-    theme_color: '#070b16',
+    // Both come from lib/theme. background_color becomes the installed app's
+    // window background — on Android 15+ it is what shows behind the
+    // (transparent) system bars whenever Chrome doesn't draw the page there,
+    // and lib/theme pins theme-color to it in exactly that case.
+    background_color: MANIFEST_BACKGROUND,
+    theme_color: MANIFEST_BACKGROUND,
     categories: ['productivity', 'utilities'],
     // Raster only, deliberately. Android builds an APK for an installed PWA and
     // draws the splash from these icons — it does not rasterize SVG. Listing

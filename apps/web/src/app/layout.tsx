@@ -4,6 +4,7 @@ import '@fontsource-variable/inter';
 import '@fontsource-variable/space-grotesk';
 import { Analytics } from '@/components/analytics';
 import { Providers } from '@/components/providers';
+import { BARS_FIXED_KEY, MANIFEST_BACKGROUND, THEME_COLORS, THEME_KEY } from '@/lib/theme';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -28,23 +29,27 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // The app's default (dark) colour; applyTheme() repaints this at runtime to
-  // match the chosen theme, which is what tints the phone's status bar.
-  themeColor: '#070b16',
-  // NOTE: deliberately no `viewportFit: 'cover'`. Edge-to-edge tells Chrome the
-  // page paints its own system-bar areas, so it stops filling them with
-  // theme-color and leaves dark bands instead — which is why the status and
-  // navigation bars stayed black in light mode. Letting the viewport end at the
-  // safe area puts those bars back under theme-color's control.
+  // The app's default (dark) colour; applyTheme() repaints this at runtime.
+  themeColor: THEME_COLORS.dark,
+  // Edge-to-edge. On Android 15+ the status and navigation bars are
+  // transparent and the OS ignores requests to colour them — the only way the
+  // page can colour those strips is to draw underneath them. `cover` lets the
+  // page extend there; body padding in globals.css keeps content inside the
+  // safe area, and body::before paints the theme colour under the status bar.
+  // (It was briefly removed on the mistaken theory that it caused the dark
+  // bands; without it those bands can only ever be the fixed manifest colour.)
+  viewportFit: 'cover',
 };
 
 /**
- * Runs before paint so a stored light-mode choice never flashes dark — and
- * repaints `theme-color` at the same time, which is what the phone's status bar
- * and the PWA's title bar follow. Without that second line those bars stay dark
- * in light mode, since the manifest's theme_color is a single fixed value.
+ * Runs before paint so a stored light-mode choice never flashes dark, and sets
+ * `theme-color` in the same pass. It also honours the stored result of
+ * detectSystemBars(): on a device where the status bar band is stuck on the
+ * manifest colour, following the light theme would put dark icons on a dark
+ * band, so the colour is pinned to match the band instead. Colours come from
+ * lib/theme so this can never drift from the runtime or the manifest.
  */
-const themeInit = `try{var t=localStorage.getItem('pv-theme')==='light'?'light':'dark';document.documentElement.dataset.theme=t;var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++)m[i].remove();var n=document.createElement('meta');n.name='theme-color';n.content=t==='light'?'#f4f6fc':'#070b16';document.head.appendChild(n)}catch(e){}`;
+const themeInit = `try{var t=localStorage.getItem('${THEME_KEY}')==='light'?'light':'dark';document.documentElement.dataset.theme=t;var f=localStorage.getItem('${BARS_FIXED_KEY}')==='1'&&matchMedia('(display-mode: standalone)').matches;var c=f?'${MANIFEST_BACKGROUND}':(t==='light'?'${THEME_COLORS.light}':'${THEME_COLORS.dark}');var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++)m[i].remove();var n=document.createElement('meta');n.name='theme-color';n.content=c;document.head.appendChild(n)}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

@@ -96,29 +96,69 @@ body {
 }
 
 /*
- * The root element's background is the page's *canvas* colour, and that is what
- * Chrome tints the Android navigation bar and the overscroll area with. Only
- * <body> carried a colour before, and its `background-attachment: fixed`
- * prevents Chrome resolving a flat colour from it — so the nav bar fell back to
- * black in both themes. Declaring it here gives an unambiguous canvas colour
- * that follows the theme. Keep it identical to body's background-color.
+ * The whole page background lives on the root element, never on <body>:
+ *
+ *  - The root's background-color is the document's canvas colour — the one
+ *    flat value browsers use for the overscroll area and system-bar tinting.
+ *  - The root's background covers the entire canvas regardless of how tall the
+ *    content is. When the glow sat on <body> it only painted as far as the
+ *    content reached, so any short page (sign-in, an empty drive) ended in a
+ *    flat band at the bottom.
+ *  - `fixed` pins the glow to the viewport, which under viewport-fit=cover
+ *    includes the areas behind the system bars — so the page is continuous
+ *    from the very top of the screen to the very bottom.
  */
 html {
   background-color: var(--pv-bg);
+  background-image: var(--pv-bg-glow);
+  background-attachment: fixed;
+  transition: background-color var(--pv-slow);
 }
 
+/*
+ * Edge-to-edge (viewport-fit=cover, see layout.tsx). Where Chrome extends the
+ * page under the phone's system bars, the safe-area insets are non-zero: the
+ * backgrounds above keep painting to the very edges, while this padding keeps
+ * every page's content clear of the bars. Where Chrome doesn't, the insets are
+ * 0 and nothing moves — so this can only ever help. One rule on <body> covers
+ * every page; the few fixed-position surfaces handle their own insets.
+ */
 body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
+
+/*
+ * The strip behind the status bar, painted by us in the theme colour. Without
+ * it, content scrolling up would pass visibly behind the clock and battery.
+ * It sits below modal scrims (z 50) so dialogs dim it like the rest of the
+ * page, and is zero-height wherever the page doesn't reach under the bar.
+ */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  /* The exact background of <html>, pinned to the same viewport — so the strip
+     is pixel-identical to the page behind it. A flat fill here reads as a
+     separate band, because the page carries a soft glow. */
   background-color: var(--pv-bg);
   background-image: var(--pv-bg-glow);
   background-attachment: fixed;
+  z-index: 45;
+  pointer-events: none;
+}
+
+body {
+  /* No background here — see html above. */
   color: var(--pv-text);
   font-family: var(--pv-font-body);
   font-size: var(--pv-text-md);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-  transition:
-    background-color var(--pv-slow),
-    color var(--pv-slow);
+  transition: color var(--pv-slow);
 }
 
 h1,
@@ -340,7 +380,9 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--pv-s5);
+  /* The scrim dims edge to edge; the dialog itself stays inside the safe area. */
+  padding: max(var(--pv-s5), env(safe-area-inset-top)) max(var(--pv-s5), env(safe-area-inset-right))
+    max(var(--pv-s5), env(safe-area-inset-bottom)) max(var(--pv-s5), env(safe-area-inset-left));
   z-index: 50;
 }
 
@@ -1227,7 +1269,8 @@ button {
    is in flight, so nothing ever feels like it silently hung. */
 .pv-busy-pill {
   position: fixed;
-  bottom: var(--pv-s6);
+  /* Clear the gesture/navigation bar when the page runs edge-to-edge. */
+  bottom: calc(var(--pv-s6) + env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   z-index: 60;
