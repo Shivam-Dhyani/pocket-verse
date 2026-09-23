@@ -3,7 +3,7 @@
   Regenerate/update whenever apps/api/prisma/schema.prisma OR any API route
   changes. See "Maintaining this document" at the bottom, or run the
   `db-architecture-doc` skill (.claude/skills/db-architecture-doc).
-  Last verified against schema + routes: 2026-07 (Phase 5 + zip + batched folder delete).
+  Last verified against schema + routes: 2026-09 (password-reset delivery logging; no table changes).
 -->
 
 # Pocketverse — Database & Backend Architecture

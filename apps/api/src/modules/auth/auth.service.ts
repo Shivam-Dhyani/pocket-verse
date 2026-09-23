@@ -1,11 +1,13 @@
 import { createHash, randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import type { PrismaClient, User } from '@prisma/client';
+import type { Logger } from 'pino';
 import type { UserDto } from '@pocketverse/shared';
 import { REFRESH_TOKEN_TTL_DAYS } from '../../config/env.js';
 import type { JwtHelpers } from '../../lib/jwt.js';
 import { AppError } from '../../middleware/errors.js';
 import type { Mailer } from '../../lib/mailer.js';
+import { maskEmail } from '../../lib/mask.js';
 import { AuditEventTypes, type AuditService } from '../audit/audit.service.js';
 
 const ARGON2_OPTIONS: argon2.Options = {
@@ -32,6 +34,7 @@ export interface AuthServiceDeps {
   mailer?: Mailer;
   /** Web origin used to build reset links (e.g. https://app.example.com). */
   webOrigin?: string;
+  logger?: Logger;
 }
 
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
@@ -42,7 +45,14 @@ const invalidCredentials = () =>
 const invalidRefresh = () =>
   new AppError(401, 'UNAUTHENTICATED', 'Session expired — sign in again');
 
-export function createAuthService({ prisma, jwt, audit, mailer, webOrigin }: AuthServiceDeps) {
+export function createAuthService({
+  prisma,
+  jwt,
+  audit,
+  mailer,
+  webOrigin,
+  logger,
+}: AuthServiceDeps) {
   async function issueTokens(user: User): Promise<AuthResult> {
     const raw = randomBytes(48).toString('base64url');
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -170,6 +180,12 @@ export function createAuthService({ prisma, jwt, audit, mailer, webOrigin }: Aut
     async requestPasswordReset(email: string): Promise<void> {
       const user = await prisma.user.findUnique({ where: { email } });
       if (!user) {
+        // Logged so "I never got the email" can be told apart from a mail
+        // failure — masked, since this address is whatever was typed.
+        logger?.info(
+          { event: 'mail.password_reset', outcome: 'no_account', to: maskEmail(email) },
+          'Password reset requested for an email with no account — nothing sent',
+        );
         return;
       }
       const raw = randomBytes(32).toString('base64url');
@@ -181,7 +197,11 @@ export function createAuthService({ prisma, jwt, audit, mailer, webOrigin }: Aut
         },
       });
       const base = (webOrigin ?? 'http://localhost:3000').replace(/\/$/, '');
-      await mailer?.sendPasswordReset(user.email, `${base}/reset-password?token=${raw}`);
+      await mailer?.sendPasswordReset({
+        userId: user.id,
+        email: user.email,
+        resetUrl: `${base}/reset-password?token=${raw}`,
+      });
       await audit?.record(user.id, AuditEventTypes.AUTH_PASSWORD_RESET_REQUESTED);
     },
 

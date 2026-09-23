@@ -261,8 +261,8 @@ describe('password change and reset', () => {
     const sent: string[] = [];
     const ctx = createTestApp({
       mailer: {
-        sendPasswordReset: async (_email, url) => {
-          sent.push(url);
+        sendPasswordReset: async ({ resetUrl }) => {
+          sent.push(resetUrl);
         },
       },
     });

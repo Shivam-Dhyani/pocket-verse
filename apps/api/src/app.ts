@@ -97,8 +97,18 @@ export function createApp({
     jwt,
     audit,
     mailer:
-      mailer ?? createMailer({ resendApiKey: env.RESEND_API_KEY, mailFrom: env.MAIL_FROM }, logger),
+      mailer ??
+      createMailer(
+        {
+          resendApiKey: env.RESEND_API_KEY,
+          mailFrom: env.MAIL_FROM,
+          // The link is a live credential: only ever logged in local dev.
+          logResetLinks: env.NODE_ENV !== 'production',
+        },
+        logger,
+      ),
     webOrigin: env.CORS_ORIGIN,
+    logger,
   });
   app.use(
     '/api/auth',

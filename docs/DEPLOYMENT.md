@@ -180,14 +180,30 @@ To turn it on:
    - `MAIL_FROM` = a sender **on the verified domain**, e.g.
      `Pocketverse <noreply@yourdomain.com>`
 
-Checking it: trigger a reset and read the Render logs. You'll see one of
+Checking it: every reset request writes **one** log line with
+`event: "mail.password_reset"`. In Render → Logs, search for
+`mail.password_reset` and read its `outcome`:
 
-- `Email is not configured … link logged instead of sent` → the vars aren't set
-  (the log line contains the working reset URL, so the flow is still testable);
-- `Password reset email rejected by Resend …` → the vars are set but Resend
-  refused; the logged `status`/`detail` names the reason (usually an
-  unverified `from` domain);
-- no mail log at all → the address has no account, so nothing was sent.
+| `outcome`        | Level | Meaning                                                                                                                                   |
+| ---------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `sent`           | info  | Resend accepted it. `resendId` is the message id: search it in the Resend dashboard (Emails) to see delivered / bounced / marked as spam. |
+| `rejected`       | error | The keys are set, but Resend refused. `status` / `detail` give the reason (usually an unverified `MAIL_FROM` domain or a bad key).        |
+| `failed`         | error | Couldn't reach Resend at all (network error).                                                                                             |
+| `not_configured` | error | `RESEND_API_KEY` or `MAIL_FROM` is missing, so nothing was sent.                                                                          |
+| `no_account`     | info  | No account has that address, so nothing was sent (by design).                                                                             |
+
+What the lines contain, and deliberately don't:
+
+- **`userId`** identifies who it was for. To get the actual address, look the
+  id up in the `User` table. Logs are copied to more places and kept longer
+  than the database, so they refer to people by id only.
+- **`to`** is a masked hint, e.g. `sh***@g***.com`: enough to spot a typo or an
+  odd domain, not enough to recover the address. The reset email only ever goes
+  to the account's own address, so there's no separate "to" to log.
+- **Never the full address, and never the reset link.** The link is a live
+  credential: anyone who could read it in the logs could take over the account
+  for 30 minutes. Only local development (`NODE_ENV` ≠ `production`) logs the
+  link, so the flow can be tested without an email provider.
 
 The reset link's host comes from `CORS_ORIGIN`, so make sure step 5 is done or
 the emailed link will point at the wrong site.
