@@ -95,6 +95,18 @@ body {
   min-height: 100%;
 }
 
+/*
+ * The root element's background is the page's *canvas* colour, and that is what
+ * Chrome tints the Android navigation bar and the overscroll area with. Only
+ * <body> carried a colour before, and its `background-attachment: fixed`
+ * prevents Chrome resolving a flat colour from it — so the nav bar fell back to
+ * black in both themes. Declaring it here gives an unambiguous canvas colour
+ * that follows the theme. Keep it identical to body's background-color.
+ */
+html {
+  background-color: var(--pv-bg);
+}
+
 body {
   background-color: var(--pv-bg);
   background-image: var(--pv-bg-glow);
