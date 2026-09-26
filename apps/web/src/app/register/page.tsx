@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -14,6 +14,7 @@ import { useAuthStore } from '@/stores/auth';
 export default function RegisterPage() {
   const router = useRouter();
   const setSession = useAuthStore((state) => state.setSession);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
   // Already signed in (e.g. pressed Back onto this page)? Skip straight to the drive.
@@ -22,6 +23,9 @@ export default function RegisterPage() {
   const mutation = useMutation({
     mutationFn: api.register,
     onSuccess: (result) => {
+      // Start the new session from a clean cache: nothing from a previous
+      // session (a failed "who am I", another account's drive) may carry over.
+      queryClient.clear();
       setSession(result);
       track('signed_up');
       // replace, not push: keep /register out of history so Back doesn't land here.

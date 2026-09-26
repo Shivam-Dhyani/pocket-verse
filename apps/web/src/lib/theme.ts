@@ -76,11 +76,30 @@ export const LEGACY_BARS_FIXED_KEY = 'pv-bars-fixed';
  */
 export function applyTheme(theme: Theme): void {
   document.documentElement.dataset.theme = theme;
-  document.querySelectorAll('meta[name="theme-color"]').forEach((tag) => tag.remove());
+  themeColorMeta().content = THEME_COLORS[theme];
+}
+
+/**
+ * id of the one `theme-color` tag, created by the pre-paint script in
+ * layout.tsx. The page deliberately has no React-rendered `theme-color` (no
+ * `viewport.themeColor`): React owns the tags it renders, and removing one of
+ * them from the DOM crashed the next client-side navigation ("Cannot read
+ * properties of null (reading 'removeChild')") — e.g. after signing in, the
+ * drive never appeared until a manual refresh. This tag is ours alone, so we
+ * update it in place and never touch React's nodes.
+ */
+export const THEME_COLOR_META_ID = 'pv-theme-color';
+
+function themeColorMeta(): HTMLMetaElement {
+  const existing = document.getElementById(THEME_COLOR_META_ID);
+  if (existing instanceof HTMLMetaElement) {
+    return existing;
+  }
   const meta = document.createElement('meta');
+  meta.id = THEME_COLOR_META_ID;
   meta.name = 'theme-color';
-  meta.content = THEME_COLORS[theme];
   document.head.appendChild(meta);
+  return meta;
 }
 
 /** The stored preference; 'system' when nothing (or nothing valid) is stored. */

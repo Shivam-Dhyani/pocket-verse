@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -14,6 +14,7 @@ import { useAuthStore } from '@/stores/auth';
 export default function LoginPage() {
   const router = useRouter();
   const setSession = useAuthStore((state) => state.setSession);
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
   // Already signed in (e.g. pressed Back onto this page)? Go straight to the
@@ -23,6 +24,9 @@ export default function LoginPage() {
   const mutation = useMutation({
     mutationFn: api.login,
     onSuccess: (result) => {
+      // Start the new session from a clean cache: nothing from a previous
+      // session (a failed "who am I", another account's drive) may carry over.
+      queryClient.clear();
       setSession(result);
       track('signed_in');
       // replace, not push: keep /login out of history so Back doesn't land here.

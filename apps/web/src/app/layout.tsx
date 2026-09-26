@@ -4,7 +4,7 @@ import '@fontsource-variable/inter';
 import '@fontsource-variable/space-grotesk';
 import { Analytics } from '@/components/analytics';
 import { Providers } from '@/components/providers';
-import { FORCED_THEME, THEME_COLORS, THEME_PREF_KEY } from '@/lib/theme';
+import { FORCED_THEME, THEME_COLOR_META_ID, THEME_COLORS, THEME_PREF_KEY } from '@/lib/theme';
 import iosSplashDevices from '@/lib/ios-splash-devices.json';
 import './globals.css';
 
@@ -37,8 +37,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // The app's default (dark) colour; applyTheme() repaints this at runtime.
-  themeColor: THEME_COLORS.dark,
+  // No `themeColor` here on purpose: the pre-paint script below creates the
+  // one theme-color tag, so React never owns it (see THEME_COLOR_META_ID).
   // Edge-to-edge. On Android 15+ the status and navigation bars are
   // transparent and the OS ignores requests to colour them — the only way the
   // page can colour those strips is to draw underneath them. `cover` lets the
@@ -58,8 +58,10 @@ export const viewport: Viewport = {
  * default) — and sets `theme-color` to match. In the installed Android app that
  * tag is what the navigation bar follows (Chrome 153+), so it must always be the
  * app's own theme colour. Colours come from lib/theme so this can't drift.
+ * It only ever touches its own tag (never a React-rendered one — see
+ * THEME_COLOR_META_ID).
  */
-const themeInit = `try{var f=${FORCED_THEME ? `'${FORCED_THEME}'` : 'null'};var p=localStorage.getItem('${THEME_PREF_KEY}');var t=f||(p==='light'||p==='dark'?p:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'));document.documentElement.dataset.theme=t;var c=t==='light'?'${THEME_COLORS.light}':'${THEME_COLORS.dark}';var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++)m[i].remove();var n=document.createElement('meta');n.name='theme-color';n.content=c;document.head.appendChild(n)}catch(e){}`;
+const themeInit = `try{var f=${FORCED_THEME ? `'${FORCED_THEME}'` : 'null'};var p=localStorage.getItem('${THEME_PREF_KEY}');var t=f||(p==='light'||p==='dark'?p:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'));document.documentElement.dataset.theme=t;var c=t==='light'?'${THEME_COLORS.light}':'${THEME_COLORS.dark}';var n=document.getElementById('${THEME_COLOR_META_ID}');if(!n){n=document.createElement('meta');n.id='${THEME_COLOR_META_ID}';n.name='theme-color';document.head.appendChild(n)}n.content=c}catch(e){}`;
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
