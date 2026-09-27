@@ -2049,7 +2049,11 @@ button {
   border-color: var(--pv-accent);
 }
 
-/* Grid cards: pin the checkbox to the top-left corner. */
+/* Grid cards: pin the checkbox to the top-RIGHT corner — the icon already owns
+   the top-left, and at this icon size (26px) a same-corner checkbox oversat it
+   almost entirely (Drive and iCloud both keep their selection badge off the
+   icon itself: a small corner badge over a much larger thumbnail, or in
+   Drive's list view, a straight swap for the leading icon). */
 .pv-grid-card {
   position: relative;
 }
@@ -2057,7 +2061,7 @@ button {
 .pv-grid-card .pv-select-box {
   position: absolute;
   top: 8px;
-  left: 8px;
+  right: 8px;
 }
 
 @media (pointer: coarse) {
