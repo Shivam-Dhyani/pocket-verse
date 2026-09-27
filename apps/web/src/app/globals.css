@@ -1054,7 +1054,19 @@ button {
 
 .pv-grid-card:hover {
   border-color: var(--pv-border-strong);
-  transform: translateY(-1px);
+}
+
+/* The lift is mouse-only. Touch has no real hover, but Chrome keeps :hover
+   matching on whatever you last tapped ("sticky hover") until you tap
+   elsewhere — and a `transform` on that card would make it the containing
+   block for any `position: fixed` descendant, trapping that row's own
+   actions-menu backdrop inside the card's own small box instead of covering
+   the screen, so tapping away to dismiss the menu would silently do nothing
+   almost everywhere you'd naturally tap. */
+@media (hover: hover) {
+  .pv-grid-card:hover {
+    transform: translateY(-1px);
+  }
 }
 
 .pv-grid-card .pv-row-icon {

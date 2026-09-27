@@ -38,8 +38,18 @@ export function RowActions({ actions }: { actions: RowAction[] }) {
   }, [open]);
 
   return (
-    // Clicks on the actions must never also trigger the row's open handler.
-    <span className="pv-row-actions" onClick={(event) => event.stopPropagation()}>
+    // Each button below stops its own click from also opening/toggling the
+    // row — this span doesn't do it in one place, on purpose. Mobile Chrome
+    // nudges an imprecise tap onto the nearest small tappable target (built-in
+    // "touch adjustment", meant to make small buttons easier to hit); a tap a
+    // few pixels off the kebab button lands its click on this wrapper span,
+    // not the button. A stopPropagation() here would swallow that click
+    // outright — no menu opens, and it silently never reaches the row either —
+    // turning a generous area *around* the kebab into a dead zone. Stopping
+    // propagation only on each real button means a tap that truly lands on
+    // one still won't also select the row, while a tap merely adjusted into
+    // this wrapper's area falls through to the row as intended.
+    <span className="pv-row-actions">
       {compact ? (
         <span className="pv-menu-wrap">
           <button
@@ -48,14 +58,31 @@ export function RowActions({ actions }: { actions: RowAction[] }) {
             aria-label="More actions"
             aria-haspopup="menu"
             aria-expanded={open}
-            onClick={() => setOpen((value) => !value)}
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen((value) => !value);
+            }}
           >
             <MoreIcon />
           </button>
           {open && (
             <>
-              <div className="pv-menu-backdrop" onClick={() => setOpen(false)} />
-              <div className="pv-menu pv-menu--end" role="menu">
+              <div
+                className="pv-menu-backdrop"
+                // Fixed and full-screen visually, but still nested under the
+                // row in the DOM — without this, dismissing the menu by
+                // tapping anywhere on screen would also bubble up and
+                // toggle/open the row it belongs to.
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setOpen(false);
+                }}
+              />
+              <div
+                className="pv-menu pv-menu--end"
+                role="menu"
+                onClick={(event) => event.stopPropagation()}
+              >
                 {actions.map((action) => (
                   <button
                     key={action.label}
@@ -82,7 +109,10 @@ export function RowActions({ actions }: { actions: RowAction[] }) {
             type="button"
             title={action.label}
             aria-label={action.label}
-            onClick={action.onSelect}
+            onClick={(event) => {
+              event.stopPropagation();
+              action.onSelect();
+            }}
           >
             {action.icon}
           </button>
