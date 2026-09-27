@@ -941,6 +941,15 @@ button {
   transition:
     background var(--pv-fast),
     border-color var(--pv-fast);
+  /* Without this, a tap or long-press anywhere except a real form control
+     (the checkbox) is at the mercy of the browser's own gesture recognizer —
+     it can hold the tap to see if it's the start of a double-tap-zoom, or
+     drop it as a scroll attempt on the slightest finger drift. Both make a
+     press on plain padding feel like it "does nothing" next to a native
+     checkbox, which always responds instantly. `manipulation` tells the
+     browser this element handles its own taps: no zoom delay, and normal
+     vertical scrolling still works. */
+  touch-action: manipulation;
 }
 
 .pv-row:hover {
@@ -1039,6 +1048,8 @@ button {
   transition:
     border-color var(--pv-fast),
     transform var(--pv-fast);
+  /* See .pv-row's touch-action comment — same custom press handling, same fix. */
+  touch-action: manipulation;
 }
 
 .pv-grid-card:hover {

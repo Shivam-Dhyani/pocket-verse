@@ -35,8 +35,15 @@ export function useIsTouch(): boolean {
 }
 
 const LONG_PRESS_MS = 450;
-/** Finger jitter below this still counts as a press; beyond it, it's a scroll. */
-const MOVE_TOLERANCE_PX = 10;
+/**
+ * Finger jitter below this still counts as a press; beyond it, it's a scroll.
+ * A real finger held still for 450ms drifts more than a mouse ever would —
+ * 10px was tight enough that an ordinary hold on open padding (as opposed to
+ * a small, well-defined target like the checkbox) could read as a scroll and
+ * cancel the press, which is what made selecting feel like it only "worked"
+ * right next to the checkbox.
+ */
+const MOVE_TOLERANCE_PX = 18;
 
 /**
  * Press-and-hold to act, the way selection works in a phone's gallery or file
