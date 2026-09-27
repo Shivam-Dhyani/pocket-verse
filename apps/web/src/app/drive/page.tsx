@@ -28,7 +28,7 @@ import { AppSplash } from '@/components/app-splash';
 import { SearchBox } from '@/components/search-box';
 import { UploadPanel } from '@/components/upload-panel';
 import { PreviewModal } from '@/components/preview-modal';
-import { MoveDialog } from '@/components/move-dialog';
+import { MoveDialog, type MoveSelection } from '@/components/move-dialog';
 import { GridView, ListView, type ViewProps } from '@/components/drive-views';
 import { useDialogs } from '@/components/dialogs';
 import { EmptyState, formatSize } from '@/components/ui';
@@ -37,6 +37,7 @@ import {
   FolderIcon,
   GridIcon,
   ListIcon,
+  MoveIcon,
   TrashIcon,
   UploadPortal,
   XIcon,
@@ -91,7 +92,7 @@ function DriveInner() {
   const [listedOnce, setListedOnce] = useState(false);
   const [view, setView] = useState<'list' | 'grid'>('list');
   const [preview, setPreview] = useState<FileDto | null>(null);
-  const [moving, setMoving] = useState<FileDto | null>(null);
+  const [moveSelection, setMoveSelection] = useState<MoveSelection | null>(null);
   const uploads = useUploadsStore((state) => state.uploads);
   const uploadCount = Object.keys(uploads).length;
   // Files still shown in the upload panel are hidden from the grid so the same
@@ -428,6 +429,29 @@ function DriveInner() {
     }
   }
 
+  // Builds what the Move dialog needs from the current selection — a single
+  // named item reads as `Move "name"`, like the row-level action already did;
+  // a mixed or larger selection reads as `Move N items`.
+  function moveSelected() {
+    let title = `Move ${selectionCount} ${selectionCount === 1 ? 'item' : 'items'}`;
+    if (selectionCount === 1) {
+      const soleFileId = selFiles.size === 1 ? [...selFiles][0] : undefined;
+      const soleFolderId = selFolders.size === 1 ? [...selFolders][0] : undefined;
+      const name =
+        drive.data?.files.find((file) => file.id === soleFileId)?.name ??
+        drive.data?.folders.find((folder) => folder.id === soleFolderId)?.name;
+      if (name) {
+        title = `Move “${name}”`;
+      }
+    }
+    setMoveSelection({
+      title,
+      fileIds: [...selFiles],
+      folderIds: [...selFolders],
+      currentFolderId: folderId,
+    });
+  }
+
   const onDrop = useCallback((accepted: File[]) => void ingest(accepted), [ingest]);
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
@@ -745,6 +769,16 @@ function DriveInner() {
                 <span className="pv-action-label">Download</span>
               </button>
               <button
+                className="pv-selectbar-action"
+                type="button"
+                title="Move"
+                disabled={busy !== null}
+                onClick={moveSelected}
+              >
+                <MoveIcon width={17} height={17} />
+                <span className="pv-action-label">Move</span>
+              </button>
+              <button
                 className="pv-selectbar-action pv-selectbar-action--danger"
                 type="button"
                 title="Delete"
@@ -811,7 +845,13 @@ function DriveInner() {
                 onToggleFolder: toggleFolder,
                 onOpenFolder: openFolder,
                 onOpenFile: openFile,
-                onMove: setMoving,
+                onMove: (file) =>
+                  setMoveSelection({
+                    title: `Move “${file.name}”`,
+                    fileIds: [file.id],
+                    folderIds: [],
+                    currentFolderId: file.folderId,
+                  }),
                 onRenameFile: renameFile,
                 onDeleteFile: deleteFile,
                 onRenameFolder: renameFolder,
@@ -828,7 +868,19 @@ function DriveInner() {
       )}
 
       {preview && <PreviewModal file={preview} onClose={() => setPreview(null)} />}
-      {moving && <MoveDialog file={moving} onClose={() => setMoving(null)} onMoved={refresh} />}
+      {moveSelection && (
+        <MoveDialog
+          selection={moveSelection}
+          onClose={() => setMoveSelection(null)}
+          onMoved={() => {
+            void refresh();
+            // No-op when the move came from a single row's own "Move" action —
+            // clears any stale ids when it came from the selection bar, since
+            // the moved items just left this listing.
+            clearSelection();
+          }}
+        />
+      )}
       {busyLabel && (
         <div className="pv-busy-pill" role="status" aria-live="polite">
           <span className="pv-spinner" /> {busyLabel}

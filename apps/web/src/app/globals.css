@@ -1613,6 +1613,17 @@ button {
   border-color: var(--pv-accent);
 }
 
+/* A folder being moved can't also be its own destination — shown, not hidden,
+   so it's clear where it is in the tree, just not pickable. */
+.pv-tree-row.disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.pv-tree-row.disabled:hover {
+  background: transparent;
+}
+
 .pv-tree-toggle {
   display: inline-flex;
   align-items: center;
