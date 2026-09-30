@@ -286,11 +286,16 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
     },
   };
 
-  /** Recursive total size + file count for a folder and all its descendants. */
+  /**
+   * Recursive totals for a folder and all its descendants. `totalBytes` and
+   * `fileCount` cover only files whose data is actually available — LOST files
+   * (deleted in the user's storage) are reported separately as
+   * `unavailableCount`, never counted as stored data.
+   */
   async function subtreeSize(
     userId: string,
     rootId: string,
-  ): Promise<{ totalBytes: number; fileCount: number }> {
+  ): Promise<{ totalBytes: number; fileCount: number; unavailableCount: number }> {
     const folderIds = [rootId];
     let frontier = [rootId];
     while (frontier.length > 0) {
@@ -301,14 +306,20 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
       frontier = children.map((child) => child.id);
       folderIds.push(...frontier);
     }
-    const aggregate = await prisma.file.aggregate({
-      where: { ownerId: userId, folderId: { in: folderIds } },
-      _count: true,
-      _sum: { size: true },
-    });
+    const [available, unavailableCount] = await Promise.all([
+      prisma.file.aggregate({
+        where: { ownerId: userId, folderId: { in: folderIds }, status: { not: 'LOST' } },
+        _count: true,
+        _sum: { size: true },
+      }),
+      prisma.file.count({
+        where: { ownerId: userId, folderId: { in: folderIds }, status: 'LOST' },
+      }),
+    ]);
     return {
-      totalBytes: Number(aggregate._sum.size ?? 0n),
-      fileCount: aggregate._count,
+      totalBytes: Number(available._sum.size ?? 0n),
+      fileCount: available._count,
+      unavailableCount,
     };
   }
 }

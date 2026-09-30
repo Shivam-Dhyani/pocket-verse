@@ -102,9 +102,13 @@ export const currentFolderSchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    /** Recursive total across this folder and all descendants. */
+    /** Recursive totals across this folder and all descendants. Available data
+     *  only — LOST (deleted-in-storage) files are excluded from these and
+     *  counted in `unavailableCount` instead. */
     totalBytes: z.number(),
     fileCount: z.number(),
+    /** Files here whose data is no longer available in the user's storage. */
+    unavailableCount: z.number(),
   })
   .nullable();
 

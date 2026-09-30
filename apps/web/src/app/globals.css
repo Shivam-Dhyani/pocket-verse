@@ -917,6 +917,10 @@ button {
   color: var(--pv-accent);
 }
 
+.pv-folder-meta__unavailable {
+  color: var(--pv-danger);
+}
+
 /* Absolute overlay so activating the drop hint never shifts layout (which
    would flicker the drag state). */
 .pv-drop-overlay {

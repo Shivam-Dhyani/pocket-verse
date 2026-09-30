@@ -119,6 +119,18 @@ function matchesIdFilter(value: string | null, filter: IdFilter | undefined): bo
   return value !== null && filter.in.includes(value);
 }
 
+type StatusFilter<S> = S | { not: S } | undefined;
+
+function matchesStatus<S>(value: S, filter: StatusFilter<S>): boolean {
+  if (filter === undefined) {
+    return true;
+  }
+  if (typeof filter === 'object' && filter !== null && 'not' in filter) {
+    return value !== (filter as { not: S }).not;
+  }
+  return value === filter;
+}
+
 export function createFakePrisma() {
   const users = new Map<string, UserRow>();
   const refreshTokens = new Map<string, RefreshTokenRow>();
@@ -561,14 +573,32 @@ export function createFakePrisma() {
           folder: row.folderId ? (folders.get(row.folderId) ?? null) : null,
         }));
       },
-      count: async ({ where }: { where: { ownerId: string; status?: FileRow['status'] } }) => {
+      count: async ({
+        where,
+      }: {
+        where: {
+          ownerId: string;
+          folderId?: IdFilter;
+          status?: StatusFilter<FileRow['status']>;
+        };
+      }) => {
         return [...files.values()].filter(
-          (f) => f.ownerId === where.ownerId && (!where.status || f.status === where.status),
+          (f) =>
+            f.ownerId === where.ownerId &&
+            matchesIdFilter(f.folderId, where.folderId) &&
+            matchesStatus(f.status, where.status),
         ).length;
       },
-      aggregate: async ({ where }: { where: { ownerId: string; folderId?: IdFilter } }) => {
+      aggregate: async ({
+        where,
+      }: {
+        where: { ownerId: string; folderId?: IdFilter; status?: StatusFilter<FileRow['status']> };
+      }) => {
         const rows = [...files.values()].filter(
-          (f) => f.ownerId === where.ownerId && matchesIdFilter(f.folderId, where.folderId),
+          (f) =>
+            f.ownerId === where.ownerId &&
+            matchesIdFilter(f.folderId, where.folderId) &&
+            matchesStatus(f.status, where.status),
         );
         const sum = rows.reduce((total, row) => total + row.size, 0n);
         return { _count: rows.length, _sum: { size: rows.length ? sum : null } };

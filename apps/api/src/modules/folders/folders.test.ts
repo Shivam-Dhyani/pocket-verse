@@ -91,6 +91,42 @@ describe('folders', () => {
     expect(inChild.body.currentFolder).toMatchObject({ totalBytes: 16, fileCount: 1 });
   });
 
+  it('excludes lost files from the available totals and counts them separately', async () => {
+    const { api, queue, prisma } = await setup();
+    const parent = (await api.post('/api/folders', { name: 'Parent' })).body.folder;
+    const put = async (name: string, bytes: number) => {
+      const content = randomBytes(bytes);
+      const create = await api.post('/api/files/uploads', {
+        name,
+        size: bytes,
+        folderId: parent.id,
+      });
+      const { uploadId, partSize, totalParts } = create.body.upload;
+      for (let part = 0; part < totalParts; part += 1) {
+        await api.putRaw(
+          `/api/files/uploads/${uploadId}/parts/${part}`,
+          content.subarray(part * partSize, (part + 1) * partSize),
+        );
+      }
+      return create.body.upload.fileId as string;
+    };
+    await put('kept.bin', 8);
+    const goneId = await put('gone.bin', 16);
+    await queue.drain();
+
+    // Its data was deleted in storage → LOST.
+    prisma._state.files.get(goneId)!.status = 'LOST';
+
+    const inParent = await api.get(`/api/drive?folderId=${parent.id}`);
+    // Only the 8-byte available file counts toward size + fileCount; the lost
+    // 16-byte file is reported separately and never as stored data.
+    expect(inParent.body.currentFolder).toMatchObject({
+      totalBytes: 8,
+      fileCount: 1,
+      unavailableCount: 1,
+    });
+  });
+
   it('ensure-path creates a nested tree once and reuses it on repeat', async () => {
     const { api, prisma } = await setup();
 

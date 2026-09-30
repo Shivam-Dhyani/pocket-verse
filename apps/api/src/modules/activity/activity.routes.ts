@@ -44,8 +44,15 @@ export function createStatsRouter(prisma: PrismaClient, jwt: JwtHelpers): Router
 
   router.get('/', async (req, res) => {
     const userId = req.user!.id;
+    // Storage totals count only files whose data is actually available: LOST
+    // files (deleted in the user's storage) are not real used storage, so they
+    // are excluded from both the file count and the byte total.
     const [aggregate, folders, syncingCount] = await Promise.all([
-      prisma.file.aggregate({ where: { ownerId: userId }, _count: true, _sum: { size: true } }),
+      prisma.file.aggregate({
+        where: { ownerId: userId, status: { not: 'LOST' } },
+        _count: true,
+        _sum: { size: true },
+      }),
       prisma.folder.count({ where: { ownerId: userId } }),
       prisma.file.count({ where: { ownerId: userId, status: 'UPLOADING' } }),
     ]);

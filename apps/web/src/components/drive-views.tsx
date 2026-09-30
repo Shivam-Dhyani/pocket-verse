@@ -124,6 +124,24 @@ export function DeletingMark() {
 }
 
 export function fileActions(file: FileDto, props: ViewProps) {
+  // A lost file's data is gone from storage: it can't be downloaded, and
+  // renaming or moving a dead entry is pointless. The only useful action is to
+  // remove the leftover entry — so that's all we offer.
+  if (file.status === 'lost') {
+    return (
+      <RowActions
+        actions={[
+          {
+            label: 'Remove',
+            icon: <TrashIcon {...ACTION_ICON} />,
+            onSelect: () => props.onDeleteFile(file),
+            danger: true,
+          },
+        ]}
+      />
+    );
+  }
+
   const actions: RowAction[] = [];
   if (file.status === 'ready') {
     actions.push({
@@ -140,9 +158,7 @@ export function fileActions(file: FileDto, props: ViewProps) {
     },
     { label: 'Move', icon: <MoveIcon {...ACTION_ICON} />, onSelect: () => props.onMove(file) },
     {
-      // A lost file's bytes are already gone from storage, so this only clears
-      // the leftover Pocketverse entry — label it honestly.
-      label: file.status === 'lost' ? 'Remove' : 'Delete',
+      label: 'Delete',
       icon: <TrashIcon {...ACTION_ICON} />,
       onSelect: () => props.onDeleteFile(file),
       danger: true,

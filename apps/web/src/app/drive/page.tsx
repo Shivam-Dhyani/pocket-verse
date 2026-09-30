@@ -807,14 +807,26 @@ function DriveInner() {
             </div>
           )}
 
-          {drive.data?.currentFolder && (
-            <div className="pv-folder-meta">
-              <FolderIcon width={14} height={14} />
-              {drive.data.currentFolder.name} — {formatSize(drive.data.currentFolder.totalBytes)} ·{' '}
-              {drive.data.currentFolder.fileCount}{' '}
-              {drive.data.currentFolder.fileCount === 1 ? 'file' : 'files'}
-            </div>
-          )}
+          {drive.data?.currentFolder &&
+            (() => {
+              const { name, totalBytes, fileCount, unavailableCount } = drive.data.currentFolder;
+              return (
+                <div className="pv-folder-meta">
+                  <FolderIcon width={14} height={14} />
+                  {name} — {formatSize(totalBytes)}
+                  {unavailableCount > 0 && ' available'} · {fileCount}{' '}
+                  {fileCount === 1 ? 'file' : 'files'}
+                  {unavailableCount > 0 && (
+                    <>
+                      {' · '}
+                      <span className="pv-folder-meta__unavailable">
+                        {unavailableCount} unavailable
+                      </span>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
 
           {connected && failedCount > 0 && (
             <div className="pv-banner pv-banner--warn">
