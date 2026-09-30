@@ -149,8 +149,10 @@ export function createFilesRouter(
   });
 
   router.post('/:id/download-token', async (req, res) => {
-    // Ownership (and existence) check happens in getFile.
-    const file = await service.getFile(req.user!.id, String(req.params.id));
+    // Ownership + readiness check: a file that's still uploading, failed, or
+    // lost gets an honest error in-app now, rather than a broken navigation
+    // download. The live storage check happens when the stream is served.
+    const file = await service.getDownloadableFile(req.user!.id, String(req.params.id));
     const token = await jwt.signDownloadToken(req.user!.id, file.id);
     res.json({ token });
   });

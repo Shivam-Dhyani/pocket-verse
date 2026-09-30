@@ -31,6 +31,17 @@ export interface UploadFileArgs {
 
 /** A live download connection; see TelegramGateway.createDownloader. */
 export interface Downloader {
+  /**
+   * Confirms the given chunk messages still exist (with media) in the channel,
+   * in ONE lookup, before any bytes are streamed. Lets a download fail cleanly
+   * up front — with an honest error and the file marked lost — instead of
+   * breaking mid-stream after response headers are already committed. Returns
+   * the ids that are gone (empty when all are present).
+   */
+  verifyPresent(
+    channel: StorageChannelInfo,
+    messageIds: string[],
+  ): Promise<{ missingIds: string[] }>;
   /** Streams one chunk's bytes over the shared connection. */
   downloadChunk(channel: StorageChannelInfo, messageId: string): AsyncIterable<Buffer>;
   close(): Promise<void>;

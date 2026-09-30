@@ -330,36 +330,49 @@ export function createFilesService({
         throw notFound();
       }
       if (file.status !== 'READY') {
-        throw new AppError(
-          409,
-          'FILE_NOT_READY',
-          file.status === 'ERROR'
-            ? 'This file failed to upload and cannot be downloaded.'
-            : 'This file is still uploading. Try again shortly.',
-        );
+        throw notDownloadable(file.status);
       }
       const connection = await requireConnected(userId);
       const session = decryptConnectionSession(connection, keyring);
       const channel = requireChannel(connection);
       const chunks = file.chunks;
       const { name: fileName, size: fileSize } = file;
+      const messageIds = chunks.map((chunk) => chunk.telegramMessageId);
+      if (messageIds.some((id) => !id)) {
+        throw new AppError(500, 'INTERNAL', 'File metadata is inconsistent.');
+      }
+      const lostFile = { fileId, name: fileName, size: Number(fileSize) };
+
+      // Pre-flight: confirm the data is still in storage BEFORE the route
+      // commits any response headers. A hand-deleted file then fails cleanly —
+      // marked lost, with an honest error — instead of breaking mid-download
+      // and handing the browser a corrupt, partial file.
+      const downloader = await gateway.createDownloader(session);
+      let missingIds: string[];
+      try {
+        ({ missingIds } = await downloader.verifyPresent(channel, messageIds as string[]));
+      } catch (error) {
+        await downloader.close();
+        await recordDownloadFailure(userId, error, null); // flags the connection on a revoked session
+        throw error;
+      }
+      if (missingIds.length > 0) {
+        await downloader.close();
+        await markFileLost(userId, lostFile);
+        throw fileLostError();
+      }
 
       async function* stream(): AsyncIterable<Buffer> {
-        // ONE connection for all chunks of this file (see createDownloader).
-        const downloader = await gateway.createDownloader(session);
+        // Reuses the downloader opened for the pre-flight — ONE connection for
+        // the whole file (see createDownloader).
         try {
           for (const chunk of chunks) {
-            if (!chunk.telegramMessageId) {
-              throw new AppError(500, 'INTERNAL', 'File metadata is inconsistent.');
-            }
-            yield* downloader.downloadChunk(channel, chunk.telegramMessageId);
+            yield* downloader.downloadChunk(channel, chunk.telegramMessageId!);
           }
         } catch (error) {
-          await recordDownloadFailure(userId, error, {
-            fileId,
-            name: fileName,
-            size: Number(fileSize),
-          });
+          // Backstop: a chunk deleted in the window since the pre-flight still
+          // marks the file lost (and flags a revoked session).
+          await recordDownloadFailure(userId, error, lostFile);
           throw error;
         } finally {
           await downloader.close();
@@ -367,6 +380,26 @@ export function createFilesService({
       }
 
       return { file: toFileDto(file), size: file.size, stream: stream() };
+    },
+
+    /**
+     * Cheap, DB-only readiness gate used when minting a download token, so the
+     * web app gets an honest in-app error for a file that is already known lost
+     * or failed — instead of navigating to a download that then errors. The
+     * live storage check happens in `download()`.
+     */
+    async getDownloadableFile(userId: string, fileId: string): Promise<FileDto> {
+      const file = await prisma.file.findUnique({
+        where: { id: fileId },
+        include: { chunks: { select: { size: true, status: true, progress: true } } },
+      });
+      if (!file || file.ownerId !== userId) {
+        throw notFound();
+      }
+      if (file.status !== 'READY') {
+        throw notDownloadable(file.status);
+      }
+      return toFileDto(file, file.chunks);
     },
 
     /**
@@ -551,6 +584,44 @@ export function createFilesService({
     },
   };
 
+  /** The 410 returned when a file's data was deleted inside the user's storage. */
+  function fileLostError(): AppError {
+    return new AppError(
+      410,
+      'FILE_UNAVAILABLE',
+      'This file was deleted from your storage, so it can no longer be downloaded. You can remove it from your Pocketverse listing.',
+    );
+  }
+
+  /** Honest error for a file that isn't in a downloadable state. */
+  function notDownloadable(status: string): AppError {
+    if (status === 'LOST') {
+      return fileLostError();
+    }
+    if (status === 'ERROR') {
+      return new AppError(
+        409,
+        'FILE_NOT_READY',
+        'This file failed to upload and cannot be downloaded.',
+      );
+    }
+    return new AppError(409, 'FILE_NOT_READY', 'This file is still uploading. Try again shortly.');
+  }
+
+  /**
+   * A file whose data is gone from the user's storage: mark it LOST (distinct
+   * from ERROR = upload failed) and write the loss to the activity log.
+   */
+  async function markFileLost(
+    userId: string,
+    lostFile: { fileId: string; name: string; size: number },
+  ): Promise<void> {
+    await prisma.file
+      .update({ where: { id: lostFile.fileId }, data: { status: 'LOST' } })
+      .catch(() => undefined);
+    await audit.record(userId, AuditEventTypes.FILE_UNREACHABLE, { ...lostFile });
+  }
+
   /**
    * Shared bookkeeping for a failed download stream: a missing message means
    * the file was deleted inside Telegram (mark it lost + log it); a revoked
@@ -562,10 +633,7 @@ export function createFilesService({
     lostFile: { fileId: string; name: string; size: number } | null,
   ): Promise<void> {
     if (error instanceof AppError && error.code === 'CHUNK_MISSING' && lostFile) {
-      await prisma.file
-        .update({ where: { id: lostFile.fileId }, data: { status: 'ERROR' } })
-        .catch(() => undefined);
-      await audit.record(userId, AuditEventTypes.FILE_UNREACHABLE, { ...lostFile });
+      await markFileLost(userId, lostFile);
     }
     if (error instanceof AppError && error.code === 'SESSION_REVOKED') {
       const flagged = await prisma.storageConnection
@@ -614,7 +682,12 @@ export interface ChunkProgressInfo {
 }
 
 export function toFileDto(file: FileRow, chunks?: ChunkProgressInfo[]): FileDto {
-  const statusMap = { UPLOADING: 'uploading', READY: 'ready', ERROR: 'error' } as const;
+  const statusMap = {
+    UPLOADING: 'uploading',
+    READY: 'ready',
+    ERROR: 'error',
+    LOST: 'lost',
+  } as const;
   return {
     id: file.id,
     name: file.name,
@@ -643,7 +716,12 @@ function computeSyncProgress(file: FileRow, chunks?: ChunkProgressInfo[]): numbe
 }
 
 function toUploadDto(session: UploadSession, file: FileRow): UploadSessionDto {
-  const statusMap = { UPLOADING: 'uploading', READY: 'ready', ERROR: 'error' } as const;
+  const statusMap = {
+    UPLOADING: 'uploading',
+    READY: 'ready',
+    ERROR: 'error',
+    LOST: 'lost',
+  } as const;
   return {
     uploadId: session.id,
     fileId: file.id,

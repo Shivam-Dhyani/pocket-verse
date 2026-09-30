@@ -202,6 +202,26 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
       }
 
       return {
+        async verifyPresent(
+          channel: StorageChannelInfo,
+          messageIds: string[],
+        ): Promise<{ missingIds: string[] }> {
+          try {
+            const ids = messageIds.map(Number);
+            // One lookup for every chunk of the file. getMessages returns a
+            // list aligned to the requested ids; a deleted message comes back
+            // as an empty message with no media.
+            const messages = await withTimeout(() =>
+              withFloodWait(async () => client.getMessages(channelPeer(channel), { ids })),
+            );
+            const missingIds = ids
+              .filter((_id, index) => !messages[index]?.media)
+              .map((id) => String(id));
+            return { missingIds };
+          } catch (error) {
+            throw mapTelegramError(error);
+          }
+        },
         async *downloadChunk(
           channel: StorageChannelInfo,
           messageId: string,

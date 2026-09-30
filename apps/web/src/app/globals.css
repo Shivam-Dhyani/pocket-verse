@@ -351,6 +351,20 @@ button {
   border-color: color-mix(in srgb, var(--pv-danger) 35%, transparent);
 }
 
+/* "unavailable" — data deleted in the user's storage. A dashed border sets it
+   apart from an upload failure, and it's a link to the activity log. */
+.pv-badge--lost {
+  color: var(--pv-danger);
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--pv-danger) 45%, transparent);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.pv-badge--lost:hover {
+  border-color: var(--pv-danger);
+}
+
 .pv-badge--sync {
   color: var(--pv-accent-teal);
   border-color: color-mix(in srgb, var(--pv-accent-teal) 35%, transparent);

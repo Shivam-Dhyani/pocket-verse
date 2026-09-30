@@ -140,7 +140,9 @@ export function fileActions(file: FileDto, props: ViewProps) {
     },
     { label: 'Move', icon: <MoveIcon {...ACTION_ICON} />, onSelect: () => props.onMove(file) },
     {
-      label: 'Delete',
+      // A lost file's bytes are already gone from storage, so this only clears
+      // the leftover Pocketverse entry — label it honestly.
+      label: file.status === 'lost' ? 'Remove' : 'Delete',
       icon: <TrashIcon {...ACTION_ICON} />,
       onSelect: () => props.onDeleteFile(file),
       danger: true,

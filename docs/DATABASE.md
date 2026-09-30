@@ -3,7 +3,7 @@
   Regenerate/update whenever apps/api/prisma/schema.prisma OR any API route
   changes. See "Maintaining this document" at the bottom, or run the
   `db-architecture-doc` skill (.claude/skills/db-architecture-doc).
-  Last verified against schema + routes: 2026-09 (password-reset delivery logging; no table changes).
+  Last verified against schema + routes: 2026-09 (LOST file status + download pre-flight).
 -->
 
 # Pocketverse — Database & Backend Architecture
@@ -210,7 +210,7 @@ File metadata. Bytes are NOT here — see `FileChunk`.
 | `name`        | String        |                                               |
 | `size`        | BigInt        | total bytes                                   |
 | `mimeType`    | String        |                                               |
-| `status`      | FileStatus    | `UPLOADING` / `READY` / `ERROR`               |
+| `status`      | FileStatus    | `UPLOADING` / `READY` / `ERROR` / `LOST`      |
 | `checksum`    | String?       | sha256, or `composite:<hash>` for multi-chunk |
 | `totalChunks` | Int           |                                               |
 | `folderId`    | String?       | FK → Folder (cascade); null = root            |
@@ -220,20 +220,20 @@ Indexes: `@@index([ownerId, folderId])`, `@@index([ownerId, name])` (search).
 
 **APIs that touch this table**
 
-| Endpoint                             | Service                      | Access                                  |
-| ------------------------------------ | ---------------------------- | --------------------------------------- |
-| `POST /api/files/uploads`            | `files.service.createUpload` | creates File (+ chunks + session)       |
-| `GET /api/files/:id`                 | `files.service.getFile`      | reads                                   |
-| `GET /api/files/search?q=`           | `files.service.search`       | reads by name                           |
-| `GET /api/files/:id/download`        | `files.service.download`     | reads; marks `ERROR` if a chunk is gone |
-| `POST /api/files/zip-token`          | `files.service.prepareZip`   | reads (validates selection + size cap)  |
-| `GET /api/files/zip?token=`          | `files.service.prepareZip`   | reads; streams the selection as one zip |
-| `POST /api/files/:id/download-token` | `files.service.getFile`      | reads (ownership)                       |
-| `PATCH /api/files/:id`               | `files.service.updateFile`   | rename/move                             |
-| `DELETE /api/files/:id`              | `files.service.deleteFile`   | deletes (+ storage cleanup)             |
-| `POST /api/files/retry-failed`       | `files.service.retryFailed`  | reads ERROR files; flips to `UPLOADING` |
-| `GET /api/drive`, `GET /api/stats`   | listing / aggregate          | reads / counts                          |
-| _(worker)_ `chunk-upload`            | `storage.worker`             | flips to `READY` (or `ERROR`)           |
+| Endpoint                             | Service                             | Access                                                 |
+| ------------------------------------ | ----------------------------------- | ------------------------------------------------------ |
+| `POST /api/files/uploads`            | `files.service.createUpload`        | creates File (+ chunks + session)                      |
+| `GET /api/files/:id`                 | `files.service.getFile`             | reads                                                  |
+| `GET /api/files/search?q=`           | `files.service.search`              | reads by name                                          |
+| `GET /api/files/:id/download`        | `files.service.download`            | reads; pre-flight verify, marks `LOST` if data is gone |
+| `POST /api/files/zip-token`          | `files.service.prepareZip`          | reads (validates selection + size cap)                 |
+| `GET /api/files/zip?token=`          | `files.service.prepareZip`          | reads; streams the selection as one zip                |
+| `POST /api/files/:id/download-token` | `files.service.getDownloadableFile` | reads (ownership + readiness gate)                     |
+| `PATCH /api/files/:id`               | `files.service.updateFile`          | rename/move                                            |
+| `DELETE /api/files/:id`              | `files.service.deleteFile`          | deletes (+ storage cleanup)                            |
+| `POST /api/files/retry-failed`       | `files.service.retryFailed`         | reads ERROR files; flips to `UPLOADING`                |
+| `GET /api/drive`, `GET /api/stats`   | listing / aggregate                 | reads / counts                                         |
+| _(worker)_ `chunk-upload`            | `storage.worker`                    | flips to `READY` (or `ERROR`)                          |
 
 ---
 
@@ -362,9 +362,15 @@ subtrees, ownership + size cap) and mints a short-lived token;
 `GET /api/files/zip?token=` re-resolves it and streams every entry over ONE
 storage connection as a store-mode zip. Single file:
 `GET /api/files/:id/download` (bearer or short-lived token) → read **File** +
-ordered **FileChunk** rows → stream each chunk's message from the channel. A
-missing message → **File** `ERROR` + audit `file.unreachable`; a revoked
-session → **StorageConnection** `ERROR` + audit `connection.session_revoked`.
+ordered **FileChunk** rows → **pre-flight** verify every chunk message still
+exists (one lookup, before any response headers) → stream each chunk from the
+channel. A message deleted in the user's storage → **File** `LOST` (distinct
+from `ERROR` = upload failed) + audit `file.unreachable`, returned as a clean
+`410 FILE_UNAVAILABLE` instead of a broken partial download; a revoked session
+→ **StorageConnection** `ERROR` + audit `connection.session_revoked`.
+`POST /api/files/:id/download-token` runs a cheap DB-only readiness gate
+(`getDownloadableFile`) so an already-known `LOST`/`ERROR`/`UPLOADING` file is
+refused in-app before the download navigation.
 
 ### 5. Folder upload (client orchestration)
 

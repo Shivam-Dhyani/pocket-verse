@@ -98,19 +98,24 @@ describe('upload → storage → download roundtrip', () => {
     // Simulate the user hand-deleting the message from their storage channel.
     channelStore.clear();
 
-    // The download fails (stream may abort mid-response — status is best-effort).
-    await api
-      .get(`/api/files/${fileId}/download`)
-      .buffer(true)
-      .catch(() => null);
+    // The download fails cleanly up front (pre-flight), never a corrupt
+    // partial file: a 410 with an honest "unavailable" error, before any bytes.
+    const download = await api.get(`/api/files/${fileId}/download`).buffer(true);
+    expect(download.status).toBe(410);
+    expect(download.body.error.code).toBe('FILE_UNAVAILABLE');
 
-    // The file is marked as no longer retrievable…
+    // The file is marked LOST (not ERROR — it uploaded fine, then was deleted)…
     const file = await api.get(`/api/files/${fileId}`);
-    expect(file.body.file.status).toBe('error');
+    expect(file.body.file.status).toBe('lost');
 
     // …and the loss is written to the user's activity log with what was lost.
     const lost = prisma._state.auditEvents.find((event) => event.type === 'file.unreachable');
     expect(lost?.metadata).toMatchObject({ fileId, name: 'gone.bin', size: 6 });
+
+    // A token mint now also refuses it in-app, with the same honest error.
+    const token = await api.post(`/api/files/${fileId}/download-token`);
+    expect(token.status).toBe(410);
+    expect(token.body.error.code).toBe('FILE_UNAVAILABLE');
   });
 
   it('records a plain sha256 checksum for single-chunk files', async () => {

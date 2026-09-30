@@ -532,10 +532,15 @@ function DriveInner() {
   }
 
   async function deleteFile(file: FileDto) {
+    // A lost file's data is already gone from storage — "deleting" it only
+    // clears the leftover entry from Pocketverse, so say that plainly.
+    const lost = file.status === 'lost';
     const ok = await dialogs.confirm({
-      title: 'Delete file',
-      message: `Delete “${file.name}”? This also deletes it from your connected storage.`,
-      confirmLabel: 'Delete',
+      title: lost ? 'Remove from Pocketverse' : 'Delete file',
+      message: lost
+        ? `“${file.name}” was already deleted from your storage, so there's nothing left to download. Remove it from your Pocketverse listing?`
+        : `Delete “${file.name}”? This also deletes it from your connected storage.`,
+      confirmLabel: lost ? 'Remove' : 'Delete',
       danger: true,
     });
     if (ok) {

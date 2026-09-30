@@ -107,6 +107,11 @@ export function createFakeGateway(options: FakeGatewayOptions = {}) {
     async createDownloader(_session) {
       calls.push({ method: 'createDownloader', args: {} });
       return {
+        async verifyPresent(_channel, messageIds) {
+          calls.push({ method: 'verifyPresent', args: { messageIds } });
+          const missingIds = messageIds.filter((id) => !channelStore.has(id));
+          return { missingIds };
+        },
         async *downloadChunk(_channel, messageId) {
           calls.push({ method: 'downloadChunk', args: { messageId } });
           const bytes = channelStore.get(messageId);

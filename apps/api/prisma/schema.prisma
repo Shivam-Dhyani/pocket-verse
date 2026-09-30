@@ -76,6 +76,10 @@ enum FileStatus {
   UPLOADING
   READY
   ERROR
+  // Was READY, then its data was deleted inside the user's storage (by hand),
+  // so it can never be downloaded again. Distinct from ERROR (upload failed):
+  // the copy, the badge, and the recovery path all differ.
+  LOST
 }
 
 enum ChunkStatus {

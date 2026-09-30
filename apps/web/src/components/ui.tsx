@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, type ReactNode } from 'react';
+import Link from 'next/link';
 import type { FileStatusValue } from '@pocketverse/shared';
 import { CheckIcon, XIcon } from '@/components/icons';
 
@@ -78,6 +79,19 @@ export function StatusBadge({
   }
   if (status === 'error') {
     return <span className="pv-badge pv-badge--warn">upload failed</span>;
+  }
+  if (status === 'lost') {
+    // Uploaded fine, then its data was deleted inside the user's storage. The
+    // badge links to the activity log, where the loss is recorded with details.
+    return (
+      <Link
+        href="/activity"
+        className="pv-badge pv-badge--lost"
+        title="This file was deleted from your storage, so Pocketverse can no longer download it. Open your activity log for details."
+      >
+        unavailable
+      </Link>
+    );
   }
   return (
     <span className="pv-badge pv-badge--sync">

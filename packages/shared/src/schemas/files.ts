@@ -70,7 +70,9 @@ export const ensureFolderPathSchema = z.object({
 
 export type EnsureFolderPathInput = z.infer<typeof ensureFolderPathSchema>;
 
-export const fileStatusValues = ['uploading', 'ready', 'error'] as const;
+// 'lost' = uploaded fine, then its data was deleted inside the user's storage,
+// so it can never be downloaded again (distinct from 'error' = upload failed).
+export const fileStatusValues = ['uploading', 'ready', 'error', 'lost'] as const;
 
 export const fileDtoSchema = z.object({
   id: z.string(),

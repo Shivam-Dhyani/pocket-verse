@@ -144,6 +144,10 @@ and theming fixes. Highlights (see `/logs` for the day-by-day detail):
   to the multi-select action bar; grid-card checkbox no longer covers the icon;
   tap-to-select made reliable across the whole card, including the dead zone around the
   overflow-menu button (2026-09-23/26/27).
+- **Data-integrity — "lost" files:** a distinct `LOST` file state for files whose data
+  was deleted inside the user's own storage (separate from an upload failure), a download
+  pre-flight that fails cleanly with an honest error instead of a corrupt partial file,
+  and an in-context "Remove from Pocketverse" affordance (2026-09-30).
 
 ---
 
