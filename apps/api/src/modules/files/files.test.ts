@@ -118,6 +118,47 @@ describe('upload → storage → download roundtrip', () => {
     expect(token.body.error.code).toBe('FILE_UNAVAILABLE');
   });
 
+  it('reclassifies a fully-stored file stuck in ERROR to lost, not "upload failed"', async () => {
+    const { api, queue, channelStore, prisma } = await setupConnected();
+    const content = randomBytes(6);
+    const { fileId } = await uploadWhole(api, content, 'was-stored.bin');
+    await queue.drain();
+
+    // The file was fully stored (READY, chunk has a message id), then an
+    // earlier build flagged it ERROR when its data went missing — the stuck
+    // state we're healing. Its data is gone from storage.
+    const stored = prisma._state.files.get(fileId)!;
+    stored.status = 'ERROR';
+    channelStore.clear();
+
+    // Downloading it must NOT report "upload failed" — it verifies storage,
+    // finds the data gone, and reclassifies to lost.
+    const download = await api.get(`/api/files/${fileId}/download`).buffer(true);
+    expect(download.status).toBe(410);
+    expect(download.body.error.code).toBe('FILE_UNAVAILABLE');
+
+    const file = await api.get(`/api/files/${fileId}`);
+    expect(file.body.file.status).toBe('lost');
+  });
+
+  it('retry-sync reclassifies a fully-stored-but-lost file instead of retrying it', async () => {
+    const { api, queue, channelStore, prisma } = await setupConnected();
+    const content = randomBytes(6);
+    const { fileId } = await uploadWhole(api, content, 'was-stored.bin');
+    await queue.drain();
+
+    const stored = prisma._state.files.get(fileId)!;
+    stored.status = 'ERROR';
+    channelStore.clear();
+
+    const retry = await api.post('/api/files/retry-failed');
+    expect(retry.status).toBe(200);
+    expect(retry.body).toMatchObject({ lost: 1 });
+
+    const file = await api.get(`/api/files/${fileId}`);
+    expect(file.body.file.status).toBe('lost');
+  });
+
   it('records a plain sha256 checksum for single-chunk files', async () => {
     const { api, queue } = await setupConnected();
     const content = randomBytes(6); // fits one chunk

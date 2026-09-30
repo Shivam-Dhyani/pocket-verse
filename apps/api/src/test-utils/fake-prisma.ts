@@ -73,7 +73,7 @@ interface FileRow {
   name: string;
   size: bigint;
   mimeType: string;
-  status: 'UPLOADING' | 'READY' | 'ERROR';
+  status: 'UPLOADING' | 'READY' | 'ERROR' | 'LOST';
   checksum: string | null;
   totalChunks: number;
   folderId: string | null;

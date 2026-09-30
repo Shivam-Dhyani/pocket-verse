@@ -492,9 +492,20 @@ function DriveInner() {
     setBusy('Retrying sync…');
     try {
       track('retry_sync_clicked', { failed: failedCount });
-      const { retried, unrecoverable } = await driveApi.retryFailed();
+      const { retried, unrecoverable, lost } = await driveApi.retryFailed();
       await refresh();
-      if (unrecoverable > 0) {
+      // A "lost" file wasn't a failed upload at all — it was stored and then
+      // deleted from your storage. Say that plainly instead of asking for a
+      // re-upload, which wouldn't apply.
+      if (lost > 0) {
+        await dialogs.notice({
+          title:
+            lost === 1
+              ? 'A file was deleted from your storage'
+              : 'Files were deleted from your storage',
+          message: `${lost} ${lost === 1 ? 'file' : 'files'} ${lost === 1 ? 'was' : 'were'} already deleted from your storage, so ${lost === 1 ? "it isn't" : "they aren't"} a failed upload — ${lost === 1 ? "it's" : "they're"} now marked unavailable. You can remove ${lost === 1 ? 'it' : 'them'} from your listing.${retried > 0 ? ` Meanwhile ${retried} ${retried === 1 ? 'file is' : 'files are'} syncing again.` : ''}`,
+        });
+      } else if (unrecoverable > 0) {
         await dialogs.notice({
           title: retried > 0 ? 'Some files are syncing again' : 'These files need a fresh upload',
           message: `${retried > 0 ? `${retried} ${retried === 1 ? 'file is' : 'files are'} on their way again. ` : ''}${unrecoverable} ${unrecoverable === 1 ? 'file' : 'files'} couldn't be retried — their data is no longer on our server (we don't keep your bytes), so please upload ${unrecoverable === 1 ? 'it' : 'them'} again from your device.`,

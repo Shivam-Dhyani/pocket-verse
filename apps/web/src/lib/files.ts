@@ -47,7 +47,7 @@ export const driveApi = {
       auth: true,
     }),
   retryFailed: () =>
-    request<{ retried: number; unrecoverable: number }>('/api/files/retry-failed', {
+    request<{ retried: number; unrecoverable: number; lost: number }>('/api/files/retry-failed', {
       method: 'POST',
       auth: true,
     }),

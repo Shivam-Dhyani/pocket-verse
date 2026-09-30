@@ -329,7 +329,17 @@ export function createFilesService({
       if (!file || file.ownerId !== userId) {
         throw notFound();
       }
-      if (file.status !== 'READY') {
+      // READY is the normal case. An ERROR file that was nonetheless FULLY
+      // stored (every chunk has a storage message id) is not an upload failure
+      // — it was stored and then something changed, e.g. its data was deleted
+      // in storage and an earlier build flagged it ERROR instead of LOST. Let
+      // it through so the pre-flight below can verify and reclassify it (→ LOST
+      // if gone). A genuine upload failure never reached storage, so it's
+      // refused here with the honest "upload failed" message.
+      if (file.status === 'LOST') {
+        throw fileLostError();
+      }
+      if (file.status !== 'READY' && !wasFullyStored(file.chunks)) {
         throw notDownloadable(file.status);
       }
       const connection = await requireConnected(userId);
@@ -361,6 +371,14 @@ export function createFilesService({
         await markFileLost(userId, lostFile);
         throw fileLostError();
       }
+      // The data is all present. If this file had been flagged ERROR while
+      // actually being fully stored, repair it back to READY so it stops
+      // showing "upload failed".
+      if (file.status !== 'READY') {
+        await prisma.file
+          .update({ where: { id: fileId }, data: { status: 'READY' } })
+          .catch(() => undefined);
+      }
 
       async function* stream(): AsyncIterable<Buffer> {
         // Reuses the downloader opened for the pre-flight — ONE connection for
@@ -391,12 +409,21 @@ export function createFilesService({
     async getDownloadableFile(userId: string, fileId: string): Promise<FileDto> {
       const file = await prisma.file.findUnique({
         where: { id: fileId },
-        include: { chunks: { select: { size: true, status: true, progress: true } } },
+        include: {
+          chunks: { select: { size: true, status: true, progress: true, telegramMessageId: true } },
+        },
       });
       if (!file || file.ownerId !== userId) {
         throw notFound();
       }
-      if (file.status !== 'READY') {
+      if (file.status === 'LOST') {
+        throw fileLostError();
+      }
+      // A genuine upload failure (never fully stored) is refused here. A file
+      // that WAS fully stored but is flagged ERROR is let through: `download()`
+      // then verifies it against storage and reclassifies (→ LOST if the data
+      // is gone, or → READY if it's actually still there).
+      if (file.status !== 'READY' && !wasFullyStored(file.chunks)) {
         throw notDownloadable(file.status);
       }
       return toFileDto(file, file.chunks);
@@ -540,49 +567,101 @@ export function createFilesService({
      * retried server-side — the bytes only exist on the user's device — so
      * they're reported as needing a fresh upload.
      */
-    async retryFailed(userId: string): Promise<{ retried: number; unrecoverable: number }> {
-      await requireConnected(userId);
+    async retryFailed(
+      userId: string,
+    ): Promise<{ retried: number; unrecoverable: number; lost: number }> {
+      const connection = await requireConnected(userId);
       const files = await prisma.file.findMany({
         where: { ownerId: userId, status: 'ERROR' },
         include: { chunks: { orderBy: { index: 'asc' } } },
       });
 
+      const session = decryptConnectionSession(connection, keyring);
+      const channel = requireChannel(connection);
       let retried = 0;
       let unrecoverable = 0;
-      for (const file of files) {
-        const pending = file.chunks.filter((chunk) => chunk.status !== 'UPLOADED');
-        const staged = await Promise.all(
-          pending.map((chunk) =>
-            stat(stagingPathFor(file.id, chunk.index)).then(
-              (s) => s.size,
-              () => -1,
+      let lost = 0;
+      // Opened lazily, only if there's a fully-stored file to verify.
+      let downloader: Awaited<ReturnType<typeof gateway.createDownloader>> | null = null;
+      try {
+        for (const file of files) {
+          // A fully-stored file isn't a failed upload — it reached storage and
+          // then something changed (typically its data was deleted there).
+          // Verify against storage and reclassify rather than re-uploading:
+          // gone → LOST ("unavailable"); still present → repair to READY.
+          if (wasFullyStored(file.chunks)) {
+            try {
+              downloader ??= await gateway.createDownloader(session);
+              const { missingIds } = await downloader.verifyPresent(
+                channel,
+                file.chunks.map((chunk) => chunk.telegramMessageId!),
+              );
+              if (missingIds.length > 0) {
+                await markFileLost(userId, {
+                  fileId: file.id,
+                  name: file.name,
+                  size: Number(file.size),
+                });
+                lost += 1;
+              } else {
+                await prisma.file
+                  .update({ where: { id: file.id }, data: { status: 'READY' } })
+                  .catch(() => undefined);
+              }
+            } catch {
+              // Couldn't verify right now (transient) — leave it flagged as-is.
+            }
+            continue;
+          }
+
+          const pending = file.chunks.filter((chunk) => chunk.status !== 'UPLOADED');
+          const staged = await Promise.all(
+            pending.map((chunk) =>
+              stat(stagingPathFor(file.id, chunk.index)).then(
+                (s) => s.size,
+                () => -1,
+              ),
             ),
-          ),
-        );
-        const recoverable =
-          pending.length > 0 &&
-          pending.every((chunk, index) => staged[index] === Number(chunk.size));
-        if (!recoverable) {
-          unrecoverable += 1;
-          continue;
-        }
-        await prisma.fileChunk.updateMany({
-          where: { fileId: file.id, status: { not: 'UPLOADED' } },
-          data: { status: 'PENDING', progress: 0, attempts: 0 },
-        });
-        await prisma.file.update({ where: { id: file.id }, data: { status: 'UPLOADING' } });
-        for (const chunk of pending) {
-          await queue.enqueue('chunk-upload', {
-            fileId: file.id,
-            chunkIndex: chunk.index,
-            stagingPath: stagingPathFor(file.id, chunk.index),
+          );
+          const recoverable =
+            pending.length > 0 &&
+            pending.every((chunk, index) => staged[index] === Number(chunk.size));
+          if (!recoverable) {
+            unrecoverable += 1;
+            continue;
+          }
+          await prisma.fileChunk.updateMany({
+            where: { fileId: file.id, status: { not: 'UPLOADED' } },
+            data: { status: 'PENDING', progress: 0, attempts: 0 },
           });
+          await prisma.file.update({ where: { id: file.id }, data: { status: 'UPLOADING' } });
+          for (const chunk of pending) {
+            await queue.enqueue('chunk-upload', {
+              fileId: file.id,
+              chunkIndex: chunk.index,
+              stagingPath: stagingPathFor(file.id, chunk.index),
+            });
+          }
+          retried += 1;
         }
-        retried += 1;
+      } finally {
+        if (downloader) {
+          await downloader.close();
+        }
       }
-      return { retried, unrecoverable };
+      return { retried, unrecoverable, lost };
     },
   };
+
+  /**
+   * Whether a file's data actually reached storage: every chunk has a storage
+   * message id. True only for a file that was fully uploaded (was READY) — so
+   * an ERROR file that is `wasFullyStored` was stored and then something changed
+   * (typically deleted in storage), NOT an upload that never landed.
+   */
+  function wasFullyStored(chunks: { telegramMessageId: string | null }[]): boolean {
+    return chunks.length > 0 && chunks.every((chunk) => Boolean(chunk.telegramMessageId));
+  }
 
   /** The 410 returned when a file's data was deleted inside the user's storage. */
   function fileLostError(): AppError {
