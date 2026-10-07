@@ -42,7 +42,11 @@ Update the doc in the same change that touches either side it documents:
      list.
 
 2. **Reconcile each section of `docs/DATABASE.md`:**
-   - **ER diagram** — add/remove entities and relationships.
+   - **ER diagram** — add/remove entities and relationships. It's a rendered
+     image (`docs/images/er-diagram.png`) so it previews in any Markdown viewer:
+     edit the Mermaid source `docs/images/er-diagram.mmd`, then regenerate the
+     PNG (`npx -p @mermaid-js/mermaid-cli mmdc -i docs/images/er-diagram.mmd -o
+docs/images/er-diagram.png -b white -s 2`) and commit both.
    - **Per-table** — columns (type + constraint), relations, indexes, and the
      **"APIs that touch this table"** table. An endpoint appears under EVERY
      table it reads or writes (a delete that cascades chunks appears under both

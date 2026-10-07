@@ -1,0 +1,12 @@
+erDiagram
+  User ||--o| StorageConnection : has
+  User ||--o{ RefreshToken : has
+  User ||--o{ PasswordResetToken : has
+  User ||--o{ AuditEvent : records
+  User ||--o{ Folder : owns
+  User ||--o{ File : owns
+  User ||--o{ UploadSession : owns
+  Folder ||--o{ Folder : "parent/child"
+  Folder ||--o{ File : contains
+  File ||--o{ FileChunk : "split into"
+  File ||--o| UploadSession : "resumable via"

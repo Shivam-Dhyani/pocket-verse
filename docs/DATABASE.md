@@ -38,20 +38,18 @@ are used together.
 
 ## Entity-relationship overview
 
-```mermaid
-erDiagram
-  User ||--o| StorageConnection : has
-  User ||--o{ RefreshToken : has
-  User ||--o{ PasswordResetToken : has
-  User ||--o{ AuditEvent : records
-  User ||--o{ Folder : owns
-  User ||--o{ File : owns
-  User ||--o{ UploadSession : owns
-  Folder ||--o{ Folder : "parent/child"
-  Folder ||--o{ File : contains
-  File ||--o{ FileChunk : "split into"
-  File ||--o| UploadSession : "resumable via"
-```
+![Entity-relationship diagram of the Pocketverse database: User at the root owning StorageConnection, RefreshToken, PasswordResetToken, AuditEvent, Folder, File and UploadSession; Folder nests folders and contains files; File splits into FileChunks and links to an UploadSession.](images/er-diagram.png)
+
+<!--
+  The diagram above is a rendered PNG so it previews in ANY Markdown viewer (not
+  only Mermaid-aware ones). Its source is docs/images/er-diagram.mmd — edit that,
+  then regenerate the image:
+
+    npx -p @mermaid-js/mermaid-cli mmdc -i docs/images/er-diagram.mmd \
+      -o docs/images/er-diagram.png -b white -s 2
+
+  Keep the .mmd and the .png in sync in the same change.
+-->
 
 ---
 
@@ -417,7 +415,10 @@ that alters either side it documents:
 
 - **Schema change** (`apps/api/prisma/schema.prisma` / a new migration): update
   the affected [table section](#table-reference), the [ER diagram](#entity-relationship-overview),
-  and any [flow](#end-to-end-flows) that now touches the table differently.
+  and any [flow](#end-to-end-flows) that now touches the table differently. The ER
+  diagram is a rendered image — edit its source `docs/images/er-diagram.mmd` and
+  regenerate `docs/images/er-diagram.png` (command in the HTML comment under the
+  ER overview), committing both together.
 - **API change** (any `apps/api/src/modules/**/*.routes.ts`, or route mounting
   in `apps/api/src/app.ts`): update the **"APIs that touch this table"** table
   for every table the endpoint reads or writes, and add/adjust a flow if it's a
