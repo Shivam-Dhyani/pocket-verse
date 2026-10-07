@@ -19,20 +19,32 @@ This repo keeps a written memory of its own development. Use it every time.
    record of recent changes, fixes, and their root causes. Skim the latest few so you
    don't re-break something that was already fixed or re-litigate a settled decision.
 
-**After finishing your work, record it — same change, before you're done:**
+**After finishing your work, record it — same change, before you're done.**
+Keeping docs current is **part of the change, not optional cleanup**: every
+folder and MD file the change touches must be updated in the **same commit**.
 
 1. **Always** update the log for today's date: `logs/YYYY-MM-DD.md`. Create the file if
    it doesn't exist yet (copy the template in [`logs/README.md`](logs/README.md));
    **append** a new `##` section if it does. Write what changed, why (root cause for a
    fix), which areas/files, and how you verified it. This is non-negotiable for any code
    change.
-2. **Only if the change is a milestone** — a new phase/workstream, or something that
-   changes the shape of the product or how you'd describe it to a new contributor —
-   also add or extend a section in `docs/DEVELOPMENT_JOURNEY.md`. Routine changes do
-   **not** go in the journey; they live only in the log.
+2. **Update every doc the change touches** — match the change to its docs:
+
+   | If the change…                                                                                                                                                                                                       | Update (same commit)                                                                                                                                                      |
+   | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | makes/alters an **architectural decision** — new dependency or external service, data-model or protocol change, auth/security choice, deploy-topology change, or anything a future contributor would be surprised by | add or revise an ADR in [`docs/adr/`](docs/adr/) (and its index table; set an old ADR to `Superseded by…`, never delete). See [`docs/adr/README.md`](docs/adr/README.md). |
+   | touches the **data model or API** (`schema.prisma`, a migration, `*.routes.ts`/`*.service.ts`, route mounting in `app.ts`)                                                                                           | `docs/DATABASE.md` — see the golden rule below. Regenerate the ER image if entities/relations changed.                                                                    |
+   | changes **PWA behaviour** (service worker, manifest, install, offline, launch screen, update prompt, system bars)                                                                                                    | `docs/PWA.md`                                                                                                                                                             |
+   | changes **deployment / env / hosting** (`render.yaml`, `vercel.json`, env vars, build)                                                                                                                               | `docs/DEPLOYMENT.md` (and `.env.example` for new vars)                                                                                                                    |
+   | changes **user-facing features, setup, or scripts**                                                                                                                                                                  | `README.md`                                                                                                                                                               |
+   | is a **milestone** — a new phase/workstream, or something that changes the shape of the product or how you'd describe it to a new contributor                                                                        | add/extend a section in `docs/DEVELOPMENT_JOURNEY.md` (routine changes stay in the log only)                                                                              |
+
+   When in doubt, over-document: a stale doc is worse than a verbose one. If a
+   change spans several of these, update all of them.
 
 Logs are append-only history: don't rewrite past logs to match later reality. If
 something changes or is reversed, record that in the log for the day it changed.
+ADRs are a history too — supersede, don't delete.
 
 ## Golden rules
 
@@ -69,5 +81,7 @@ pnpm typecheck && pnpm lint && pnpm --filter @pocketverse/api test && pnpm --fil
 - `docs/DATABASE.md` — data model + API-to-table reference (keep fresh; see above)
 - `docs/DEPLOYMENT.md` — free-tier deploy runbook (Vercel + Render + Neon)
 - `docs/PWA.md` — PWA behaviour (install, offline, launch screen, updates, system bars)
-- `docs/adr/` — architecture decision records
+- `docs/adr/` — architecture decision records: **why** the project is shaped as it is
+  (add one for every architectural decision — see the record-after table above)
+- `docs/images/` — rendered diagram assets (e.g. the ER diagram); sources alongside
 - `README.md` — standard project readme (what it is, setup, scripts, docs map)

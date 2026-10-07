@@ -88,7 +88,7 @@ troubleshooting: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 | [`docs/DATABASE.md`](docs/DATABASE.md)                       | Data model and API↔table reference (kept in sync with the code).        |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)                   | Free-tier deployment runbook.                                           |
 | [`docs/PWA.md`](docs/PWA.md)                                 | PWA behaviour — install, offline, launch screen, updates, system bars.  |
-| [`docs/adr/`](docs/adr/)                                     | Architecture decision records.                                          |
+| [`docs/adr/`](docs/adr/)                                     | Architecture Decision Records — _why_ the project is shaped as it is.   |
 | [`CLAUDE.md`](CLAUDE.md)                                     | Repo guide and conventions for AI-assisted development.                 |
 
 ## Troubleshooting

@@ -7,6 +7,9 @@ reference in [`docs/DATABASE.md`](DATABASE.md).
 - **This file** = the arc: what each phase set out to do and how the product grew.
 - **`/logs/YYYY-MM-DD.md`** = the granular record: every change, fix, and decision on
   the day it happened.
+- **`docs/adr/`** = the **why**: Architecture Decision Records for the significant
+  choices (storage in the user's Telegram account, chunked transfers, auth model,
+  deploy topology, …) and the alternatives rejected.
 - **`docs/DATABASE.md`** = the current data model and API↔table map.
 
 New to the codebase (human or Claude)? Read this file top to bottom for the shape of
