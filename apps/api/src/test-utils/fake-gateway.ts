@@ -102,7 +102,13 @@ export function createFakeGateway(options: FakeGatewayOptions = {}) {
       const messageId = String(nextMessageId++);
       channelStore.set(messageId, bytes);
       args.onProgress?.(1);
-      return { messageId };
+      return { messageId, reusedConnection: false };
+    },
+    prewarm(session) {
+      calls.push({ method: 'prewarm', args: { session } });
+    },
+    async close() {
+      calls.push({ method: 'close', args: {} });
     },
     async createDownloader(_session) {
       calls.push({ method: 'createDownloader', args: {} });

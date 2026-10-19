@@ -38,3 +38,7 @@ on the interface.
   download round-trip is tested against the fake gateway, with no network.
 - Swapping libraries (or adding TDLib later) means writing one adapter, not
   touching services.
+
+**Related:** [ADR-0014](./0014-warm-storage-connections.md) — transfers reuse a
+warm per-account connection instead of connecting per operation; the
+per-user serialization above is unchanged.

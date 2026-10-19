@@ -3,7 +3,7 @@
   Regenerate/update whenever apps/api/prisma/schema.prisma OR any API route
   changes. See "Maintaining this document" at the bottom, or run the
   `db-architecture-doc` skill (.claude/skills/db-architecture-doc).
-  Last verified against schema + routes: 2026-09 (LOST status; download pre-flight + ERROR→LOST self-heal; LOST excluded from storage totals).
+  Last verified against schema + routes: 2026-10 (upload prewarm in createUpload; no table changes).
 -->
 
 # Pocketverse — Database & Backend Architecture
@@ -344,7 +344,9 @@ How the tables are used **together**. Each step notes the table(s) it hits.
 ### 3. Upload a file (HTTP → disk → background sync)
 
 1. `POST /api/files/uploads` → create **File** (`UPLOADING`) + **FileChunk**
-   rows (`PENDING`) + **UploadSession**.
+   rows (`PENDING`) + **UploadSession**. Reads **StorageConnection** and starts
+   warming the account's storage connection in the background (no table
+   writes), so step 3 doesn't wait on connection setup — see ADR-0014.
 2. `PUT /uploads/:id/parts/:index` (repeated) → append bytes to disk staging,
    advance **UploadSession.nextPart**; when a chunk's parts are complete →
    record **FileChunk.checksum** → enqueue `chunk-upload`.

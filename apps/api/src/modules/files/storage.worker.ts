@@ -56,16 +56,20 @@ export function createStorageWorker({
       });
 
       const session = decryptConnectionSession(connection, keyring);
-      const startedAt = Date.now();
+      const queuedAt = Date.now();
+      let startedAt = queuedAt;
       const sizeMb = (Number(chunk.size) / 1024 / 1024).toFixed(1);
-      logger.info(
-        { fileId, chunkIndex, sizeMb, fileName: chunk.file.name },
-        'Chunk transfer to storage started',
-      );
 
       let lastLoggedDecile = 0;
-      const { messageId } = await lock(chunk.file.ownerId, () =>
-        gateway.uploadFile(session, requireChannel(connection), {
+      const { messageId, reusedConnection } = await lock(chunk.file.ownerId, () => {
+        // Logged once the per-user lock is held, so `waitedMs` shows how long
+        // this chunk queued behind the account's other transfers.
+        startedAt = Date.now();
+        logger.info(
+          { fileId, chunkIndex, sizeMb, fileName: chunk.file.name, waitedMs: startedAt - queuedAt },
+          'Chunk transfer to storage started',
+        );
+        return gateway.uploadFile(session, requireChannel(connection), {
           path: stagingPath,
           fileName:
             chunk.file.totalChunks === 1
@@ -85,10 +89,17 @@ export function createStorageWorker({
                 .catch(() => undefined);
             }
           },
-        }),
-      );
+        });
+      });
       logger.info(
-        { fileId, chunkIndex, sizeMb, seconds: Math.round((Date.now() - startedAt) / 1000) },
+        {
+          fileId,
+          chunkIndex,
+          sizeMb,
+          transferMs: Date.now() - startedAt,
+          // false = this transfer paid for a fresh storage connection.
+          reusedConnection,
+        },
         'Chunk transfer to storage finished',
       );
 

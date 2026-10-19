@@ -92,7 +92,9 @@ and `README.md` (phase-by-phase feature tour) before deploying.
 
 ## 1. Neon (Postgres)
 
-1. https://neon.tech → new project (any region close to your Render region).
+1. https://neon.tech → new project in the **same region as your Render
+   service**, and both close to your users (see "Upload speed" below — every
+   request makes several database round trips, so distance multiplies).
 2. Copy the **direct** connection string (not the pooled one — simplest for
    Prisma migrations, and free-tier traffic is well within direct limits) and
    append `&connect_timeout=15`, so it ends with
@@ -284,11 +286,57 @@ you test, so expected behavior doesn't read as breakage.
   deploy. Fine for one instance; add Upstash (step 2) if you scale out or want
   jobs durable across restarts.
 
+## Upload speed — what governs it
+
+A small upload (a few MB) is **latency-bound, not bandwidth-bound**: almost all
+of its time is round trips between three places, so _where_ things run matters
+more than how fast any of them are.
+
+```
+phone ──(1)── Render API ──(2)── Neon Postgres
+                   └──────(3)── the user's Telegram data centre
+```
+
+1. **Phone → Render.** Each file is a "create upload" request plus its parts.
+2. **Render → Neon.** Every request and every background transfer runs several
+   queries one after another; each one pays a full round trip to the database.
+3. **Render → Telegram.** Opening a storage connection costs several round
+   trips before any byte moves; the transfer itself adds a couple more.
+
+What the code does about it (ADR-0014): one **warm storage connection per
+account** is reused across a folder's files and opened as soon as an upload
+starts, so the setup in (3) is paid at most once per upload burst, overlapped
+with the phone still sending bytes. What only hosting can fix:
+
+- **Put Render and Neon in the same region, near your users.** `render.yaml`
+  sets no region, so a Blueprint deploy lands in Render's default, **Oregon
+  (US West)**. For users in South / South-East Asia choose **Singapore** for
+  Render and **AWS Asia Pacific (Singapore)** for Neon — most accounts there
+  are also on Telegram's Singapore data centre, so all three legs become
+  short. Neither Render nor Neon can change a region in place: create the new
+  Render service (and, for Neon, a new project + `pg_dump`/`pg_restore`), move
+  the env vars, then switch `NEXT_PUBLIC_API_URL` / `CORS_ORIGIN` over.
+- **Never let the API sleep** (step 5): a cold start alone is ~30–60 s, which
+  dwarfs everything above. If the first upload after a quiet spell is the slow
+  one, this is why.
+
+**Reading the numbers.** Each storage transfer logs two lines in Render's logs:
+
+- `Chunk transfer to storage started` with `waitedMs` — time this chunk queued
+  behind the account's other transfers (they run one at a time per account).
+- `Chunk transfer to storage finished` with `transferMs` and
+  `reusedConnection` — `false` means this transfer paid for a fresh storage
+  connection. Expect `false` once per upload burst, `true` for the rest.
+
+If `transferMs` is small but uploads still feel slow, the time is in legs (1)
+or (2) — look at region and cold starts, not the code.
+
 ## Troubleshooting
 
 | Symptom                               | Cause / fix                                                                                                               |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
 | First request takes ~a minute         | Free Render cold start. UptimeRobot (step 5) makes this rare.                                                             |
+| Small uploads take tens of seconds    | Latency, not size: cold start, or Render/Neon far from users or each other. See "Upload speed" above.                     |
 | Signed out after refresh              | `CORS_ORIGIN` doesn't exactly match the Vercel URL, or you're testing over plain http (production cookies require https). |
 | `DATABASE_NOT_MIGRATED` errors        | `prisma migrate deploy` didn't run — check the deploy logs; is `DATABASE_URL` right?                                      |
 | Uploads pause mid-file after a deploy | Expected: staging disk is wiped on deploys. The client resumes from the server's part cursor automatically.               |

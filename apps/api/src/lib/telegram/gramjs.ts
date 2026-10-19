@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Api, TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions/index.js';
 import { computeCheck } from 'telegram/Password.js';
@@ -29,6 +30,13 @@ const MAX_INLINE_FLOOD_WAIT_SECONDS = 15;
 /** Hard ceiling per operation — a wedged DC connection must not hang requests. */
 const OPERATION_TIMEOUT_MS = 45_000;
 
+/**
+ * How long a warm transfer connection stays open after its last use. Long
+ * enough to span the gaps between files in a folder upload, short enough that
+ * idle accounts don't hold sockets.
+ */
+const WARM_IDLE_MS = 60_000;
+
 const timeoutError = () =>
   new AppError(
     504,
@@ -46,9 +54,111 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
   }
 
   /**
+   * Warm transfer connections, one per session. Setting up a connection is the
+   * expensive part of a small upload: TCP to the account's data centre, the
+   * MTProto init + config fetch, then a second connection GramJS opens just for
+   * file parts — several round trips before any byte moves. Paying that once
+   * per FILE made a 3-image folder slow; now consecutive uploads (and deletes)
+   * for an account share one connection, and GramJS keeps its upload
+   * connection open between them too.
+   *
+   * Keyed by a hash of the session (a reconnected account gets a fresh entry).
+   * A connection that fails an operation is dropped, so the retry reconnects
+   * cleanly. Calls for one account are already serialized by the worker's
+   * per-user lock (ADR-0003), so a connection is rarely shared concurrently —
+   * but reference counting keeps that safe if it is.
+   */
+  interface WarmClient {
+    client: TelegramClient;
+    ready: Promise<void>;
+    /** Set once `ready` resolves — distinguishes "still connecting" from "socket died". */
+    open: boolean;
+    inUse: number;
+    retired: boolean;
+    idleTimer?: NodeJS.Timeout;
+  }
+  const warm = new Map<string, WarmClient>();
+
+  const warmKey = (session: string) => createHash('sha256').update(session).digest('hex');
+
+  /** Drop from the pool now; close the socket once nothing is using it. */
+  function retire(key: string, entry: WarmClient): void {
+    entry.retired = true;
+    if (warm.get(key) === entry) {
+      warm.delete(key);
+    }
+    clearTimeout(entry.idleTimer);
+    if (entry.inUse === 0) {
+      void entry.client.destroy().catch(() => undefined);
+    }
+  }
+
+  /** A connected client for this session — reused when warm, opened if not. */
+  async function acquireWarm(
+    session: string,
+  ): Promise<{ client: TelegramClient; reused: boolean; release: (failed: boolean) => void }> {
+    const key = warmKey(session);
+    let entry = warm.get(key);
+    // A connect still in flight is fine (awaited below). A connection that was
+    // open but whose socket has since dropped is not — start over.
+    if (entry && entry.open && !entry.client.connected) {
+      retire(key, entry);
+      entry = undefined;
+    }
+    const reused = Boolean(entry);
+    if (!entry) {
+      const client = newClient(session);
+      const created: WarmClient = {
+        client,
+        open: false,
+        inUse: 0,
+        retired: false,
+        ready: withTimeout(async () => {
+          await client.connect();
+        }),
+      };
+      created.ready.then(
+        () => {
+          created.open = true;
+        },
+        // An unobserved rejection (e.g. a failed prewarm) must not crash Node.
+        () => undefined,
+      );
+      warm.set(key, created);
+      entry = created;
+    }
+    const held = entry;
+    clearTimeout(held.idleTimer);
+    held.inUse += 1;
+    try {
+      await held.ready;
+    } catch (error) {
+      held.inUse -= 1;
+      retire(key, held);
+      throw mapTelegramError(error);
+    }
+    return {
+      client: held.client,
+      reused,
+      release(failed) {
+        held.inUse -= 1;
+        if (failed || held.retired) {
+          retire(key, held);
+          return;
+        }
+        if (held.inUse === 0) {
+          held.idleTimer = setTimeout(() => retire(key, held), WARM_IDLE_MS);
+          held.idleTimer.unref();
+        }
+      },
+    };
+  }
+
+  /**
    * One connected client per operation: connect → run → always disconnect,
-   * all under a hard timeout. Free-tier dynos sleep; long-lived sockets buy
-   * nothing here yet.
+   * all under a hard timeout. Used for the infrequent account-level calls
+   * (login, health checks, channel creation, log out); transfers use the warm
+   * pool above.
    */
   async function withClient<T>(
     session: string,
@@ -153,6 +263,12 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
     },
 
     async logOut(session: string): Promise<void> {
+      // The session dies with the log-out — any warm connection on it too.
+      const key = warmKey(session);
+      const entry = warm.get(key);
+      if (entry) {
+        retire(key, entry);
+      }
       await withClient(session, async (client) => {
         await client.invoke(new Api.auth.LogOut());
       });
@@ -162,18 +278,19 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
       session: string,
       channel: StorageChannelInfo,
       args: UploadFileArgs,
-    ): Promise<{ messageId: string }> {
-      // No withTimeout here — a 1.5GB chunk legitimately takes longer than any
-      // sane fixed ceiling. GramJS streams the file from disk in parts.
-      const client = newClient(session);
+    ): Promise<{ messageId: string; reusedConnection: boolean }> {
+      // Connection setup is bounded by withTimeout inside acquireWarm. The
+      // transfer itself isn't — a 1.5GB chunk legitimately takes longer than
+      // any sane fixed ceiling. GramJS streams the file from disk in parts.
+      const { client, reused, release } = await acquireWarm(session);
+      let failed = false;
       try {
-        await client.connect();
         const message = await withFloodWait(() =>
           client.sendFile(channelPeer(channel), {
             file: new CustomFile(args.fileName, args.fileSize, args.path),
             caption: args.caption,
             forceDocument: true,
-            // Parallel MTProto upload connections — the default single worker
+            // Parallel in-flight file parts — the default single worker
             // crawls (~1MB/s) on big files.
             workers: 8,
             progressCallback: args.onProgress
@@ -181,11 +298,26 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
               : undefined,
           }),
         );
-        return { messageId: String(message.id) };
+        return { messageId: String(message.id), reusedConnection: reused };
       } catch (error) {
+        failed = true;
         throw mapTelegramError(error);
       } finally {
-        void client.destroy().catch(() => undefined);
+        release(failed);
+      }
+    },
+
+    prewarm(session: string): void {
+      void acquireWarm(session).then(
+        ({ release }) => release(false),
+        () => undefined, // best-effort: the upload itself will connect and report
+      );
+    },
+
+    async close(): Promise<void> {
+      for (const [key, entry] of [...warm]) {
+        entry.inUse = 0;
+        retire(key, entry);
       }
     },
 
@@ -266,18 +398,30 @@ export function createGramjsGateway(config: GramjsGatewayConfig): TelegramGatewa
       channel: StorageChannelInfo,
       messageIds: string[],
     ): Promise<{ deletedCount: number }> {
-      return withClient(session, async (client) => {
-        // Explicit channel deletion (deletes for all members) — the high-level
-        // client.deleteMessages() convenience routes by entity type and has
-        // silently no-oped for some setups.
-        const result = await client.invoke(
-          new Api.channels.DeleteMessages({
-            channel: channelPeer(channel),
-            id: messageIds.map(Number),
-          }),
-        );
-        return { deletedCount: result.ptsCount };
-      });
+      // Folder deletes enqueue many batches back to back — same warm connection.
+      const { client, release } = await acquireWarm(session);
+      let failed = false;
+      try {
+        return await withTimeout(async () => {
+          // Explicit channel deletion (deletes for all members) — the high-level
+          // client.deleteMessages() convenience routes by entity type and has
+          // silently no-oped for some setups.
+          const result = await withFloodWait(() =>
+            client.invoke(
+              new Api.channels.DeleteMessages({
+                channel: channelPeer(channel),
+                id: messageIds.map(Number),
+              }),
+            ),
+          );
+          return { deletedCount: result.ptsCount };
+        });
+      } catch (error) {
+        failed = true;
+        throw mapTelegramError(error);
+      } finally {
+        release(failed);
+      }
     },
   };
 }

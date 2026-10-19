@@ -112,7 +112,11 @@ export function createFilesService({
 
   return {
     async createUpload(userId: string, input: CreateUploadInput): Promise<UploadSessionDto> {
-      await requireConnected(userId);
+      const connection = await requireConnected(userId);
+      // Start opening the storage connection now, in the background, while the
+      // browser is still sending the bytes — so the first chunk doesn't wait on
+      // connection setup once it's staged. Best-effort; never blocks.
+      gateway.prewarm(decryptConnectionSession(connection, keyring));
       if (input.folderId) {
         const folder = await prisma.folder.findUnique({ where: { id: input.folderId } });
         if (!folder || folder.ownerId !== userId) {

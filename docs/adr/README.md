@@ -22,6 +22,7 @@ Read these alongside [`docs/DEVELOPMENT_JOURNEY.md`](../DEVELOPMENT_JOURNEY.md)
 | 0011 | [Distinct "lost" file state + download pre-flight](./0011-lost-file-state-and-download-preflight.md) | Accepted | post-launch |
 | 0012 | [Installable PWA, dark-mode lock, update prompt](./0012-installable-pwa-dark-lock.md)                | Accepted | post-launch |
 | 0013 | [Living documentation](./0013-living-documentation.md)                                               | Accepted | post-launch |
+| 0014 | [Warm, reused storage connections for transfers](./0014-warm-storage-connections.md)                 | Accepted | post-launch |
 
 ## Writing a new ADR
 

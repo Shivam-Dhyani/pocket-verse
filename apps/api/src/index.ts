@@ -49,7 +49,7 @@ async function shutdown(signal: string): Promise<void> {
   logger.info({ signal }, 'shutting down');
   keepAlive.stop();
   server.close(() => {
-    void prisma.$disconnect().finally(() => process.exit(0));
+    void Promise.allSettled([gateway.close(), prisma.$disconnect()]).finally(() => process.exit(0));
   });
   // Hard exit if connections refuse to drain (well under Render's 30s grace).
   setTimeout(() => process.exit(1), 15_000).unref();

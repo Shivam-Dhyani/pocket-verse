@@ -170,6 +170,18 @@ describe('upload → storage → download roundtrip', () => {
     expect(file.body.file.checksum).toBe(createHash('sha256').update(content).digest('hex'));
   });
 
+  it('starts warming the storage connection as soon as an upload begins', async () => {
+    const { api, gatewayCalls } = await setupConnected();
+    gatewayCalls.length = 0;
+
+    const res = await api.post('/api/files/uploads', { name: 'warm.bin', size: 10 });
+    expect(res.status).toBe(201);
+    // Before any byte has arrived — the connection opens while the browser
+    // is still sending, instead of after the chunk is staged.
+    expect(gatewayCalls.map((call) => call.method)).toContain('prewarm');
+    expect(gatewayCalls.map((call) => call.method)).not.toContain('uploadFile');
+  });
+
   it('requires a connected storage account to start an upload', async () => {
     const ctx = createTestApp({ env: SMALL_SIZES });
     const register = await request(ctx.app)

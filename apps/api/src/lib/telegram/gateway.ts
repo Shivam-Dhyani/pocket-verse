@@ -62,12 +62,25 @@ export interface TelegramGateway {
   checkHealth(session: string, channel?: StorageChannelInfo): Promise<void>;
   /** Invalidates the session on the storage side. Best-effort. */
   logOut(session: string): Promise<void>;
-  /** Uploads one staged chunk as a channel document. */
+  /**
+   * Uploads one staged chunk as a channel document. Rides a warm, reused
+   * connection when one is open for this session (see `prewarm`);
+   * `reusedConnection` reports which, for timing logs.
+   */
   uploadFile(
     session: string,
     channel: StorageChannelInfo,
     args: UploadFileArgs,
-  ): Promise<{ messageId: string }>;
+  ): Promise<{ messageId: string; reusedConnection: boolean }>;
+  /**
+   * Opens (or keeps alive) a warm connection for this session in the
+   * background, so the next upload skips connection setup. Called when an
+   * upload starts, while the browser is still sending its bytes. Best-effort:
+   * never throws, never blocks the caller.
+   */
+  prewarm(session: string): void;
+  /** Closes every warm connection (graceful shutdown). */
+  close(): Promise<void>;
   /**
    * Opens ONE connection for a whole download (single file or zip of many)
    * and streams chunks over it. Reusing the connection skips a full
@@ -75,7 +88,8 @@ export interface TelegramGateway {
    * files. Callers MUST close() when done (success or failure).
    */
   createDownloader(session: string): Promise<Downloader>;
-  /** Deletes chunk messages for all members; reports how many really went. */
+  /** Deletes chunk messages for all members; reports how many really went.
+   *  Rides the same warm connection as uploads. */
   deleteMessages(
     session: string,
     channel: StorageChannelInfo,

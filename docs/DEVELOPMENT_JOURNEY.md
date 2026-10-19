@@ -151,6 +151,11 @@ and theming fixes. Highlights (see `/logs` for the day-by-day detail):
   was deleted inside the user's own storage (separate from an upload failure), a download
   pre-flight that fails cleanly with an honest error instead of a corrupt partial file,
   and an in-context "Remove from Pocketverse" affordance (2026-09-30).
+- **Upload performance:** small-file uploads were dominated by per-file storage
+  connection setup; transfers now reuse a warm per-account connection that opens
+  as soon as an upload starts (ADR-0014), with timing logs and a deploy guide
+  section on the hosting factors (region, cold starts) that code can't fix
+  (2026-10-19).
 
 ---
 

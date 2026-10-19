@@ -9,6 +9,10 @@ services:
     name: pocketverse-api
     runtime: node
     plan: free
+    # No `region` set → Render's default, Oregon (US West). Region is fixed when
+    # the service is created and can't be changed later. Pick the one nearest
+    # your users AND your Neon database (e.g. `region: singapore` for South /
+    # South-East Asia) — see "Upload speed" in docs/DEPLOYMENT.md.
     healthCheckPath: /health
     buildCommand: >-
       corepack enable &&
