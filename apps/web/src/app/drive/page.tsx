@@ -138,8 +138,13 @@ function DriveInner() {
     queryKey: ['drive', folderId],
     queryFn: () => driveApi.list(folderId),
     enabled: me.isSuccess && (connected || broken),
+    // Poll while anything here is still in flight — including folders whose
+    // contents are syncing (the browser may have finished sending long before
+    // the server finishes storing), so their "syncing" chip clears on its own.
     refetchInterval: (query) =>
-      query.state.data?.files.some((file) => file.status === 'uploading') || uploadCount > 0
+      query.state.data?.files.some((file) => file.status === 'uploading') ||
+      query.state.data?.folders.some((folder) => (folder.syncingCount ?? 0) > 0) ||
+      uploadCount > 0
         ? 2500
         : false,
   });

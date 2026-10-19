@@ -3,7 +3,7 @@
 import { useEffect, type ReactNode } from 'react';
 import Link from 'next/link';
 import type { FileStatusValue } from '@pocketverse/shared';
-import { CheckIcon, XIcon } from '@/components/icons';
+import { XIcon } from '@/components/icons';
 
 export function Modal({
   title,
@@ -62,7 +62,11 @@ export function EmptyState({
   );
 }
 
-/** Consistent security/sync state colors across the app (handoff §3.5.3). */
+/**
+ * Consistent security/sync state colors across the app (handoff §3.5.3).
+ * Only states that need attention get a badge: a stored file is the normal
+ * case — every file ends up stored — so it shows nothing.
+ */
 export function StatusBadge({
   status,
   syncProgress,
@@ -71,11 +75,7 @@ export function StatusBadge({
   syncProgress: number | null;
 }) {
   if (status === 'ready') {
-    return (
-      <span className="pv-badge pv-badge--ok">
-        <CheckIcon width={11} height={11} /> stored
-      </span>
-    );
+    return null;
   }
   if (status === 'error') {
     return <span className="pv-badge pv-badge--warn">upload failed</span>;
@@ -97,6 +97,26 @@ export function StatusBadge({
     <span className="pv-badge pv-badge--sync">
       <span className="pv-spinner" style={{ width: 10, height: 10, borderWidth: 1.5 }} />
       syncing {syncProgress ?? 0}%
+    </span>
+  );
+}
+
+/**
+ * A folder with files still uploading/syncing anywhere inside it. Purely
+ * informational — the folder stays openable — and it disappears once
+ * everything inside has landed in storage.
+ */
+export function FolderSyncBadge({ count }: { count?: number }) {
+  if (!count) {
+    return null;
+  }
+  return (
+    <span
+      className="pv-badge pv-badge--sync"
+      title={`${count} ${count === 1 ? 'file is' : 'files are'} still syncing to your storage`}
+    >
+      <span className="pv-spinner" style={{ width: 10, height: 10, borderWidth: 1.5 }} />
+      syncing {count} {count === 1 ? 'file' : 'files'}
     </span>
   );
 }

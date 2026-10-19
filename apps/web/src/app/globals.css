@@ -341,11 +341,6 @@ button {
   white-space: nowrap;
 }
 
-.pv-badge--ok {
-  color: var(--pv-success);
-  border-color: color-mix(in srgb, var(--pv-success) 35%, transparent);
-}
-
 .pv-badge--warn {
   color: var(--pv-danger);
   border-color: color-mix(in srgb, var(--pv-danger) 35%, transparent);

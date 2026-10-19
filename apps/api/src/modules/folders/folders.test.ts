@@ -91,6 +91,43 @@ describe('folders', () => {
     expect(inChild.body.currentFolder).toMatchObject({ totalBytes: 16, fileCount: 1 });
   });
 
+  it('marks a folder as syncing while files anywhere inside it are still uploading', async () => {
+    const { api, queue, prisma } = await setup();
+    const photos = (await api.post('/api/folders', { name: 'Photos' })).body.folder;
+    const trip = (await api.post('/api/folders', { name: 'Trip', parentId: photos.id })).body
+      .folder;
+    const done = (await api.post('/api/folders', { name: 'Done' })).body.folder;
+
+    const start = (name: string, folderId: string, bytes = 4) =>
+      api.post('/api/files/uploads', { name, size: bytes, folderId });
+    const send = async (upload: { uploadId: string }, bytes: Buffer) =>
+      api.putRaw(`/api/files/uploads/${upload.uploadId}/parts/0`, bytes);
+
+    // Two files mid-upload, nested two levels down; a finished file elsewhere;
+    // a failed one that must NOT read as "in progress".
+    const pendingA = (await start('a.jpg', trip.id)).body.upload;
+    await start('b.jpg', trip.id);
+    const finished = (await start('done.jpg', done.id)).body.upload;
+    await send(finished, randomBytes(4));
+    const failed = (await start('failed.jpg', done.id)).body.upload;
+    await queue.drain();
+    prisma._state.files.get(failed.fileId)!.status = 'ERROR';
+
+    const root = await api.get('/api/drive');
+    const byName = (body: { folders: { name: string; syncingCount?: number }[] }) =>
+      Object.fromEntries(body.folders.map((f) => [f.name, f.syncingCount]));
+    expect(byName(root.body)).toEqual({ Done: 0, Photos: 2 });
+
+    // Inside Photos, the nested Trip folder carries the count too.
+    const inPhotos = await api.get(`/api/drive?folderId=${photos.id}`);
+    expect(byName(inPhotos.body)).toEqual({ Trip: 2 });
+
+    // Once a file lands, the count drops; it reaches 0 when everything has.
+    await send(pendingA, randomBytes(4));
+    await queue.drain();
+    expect(byName((await api.get('/api/drive')).body)).toEqual({ Done: 0, Photos: 1 });
+  });
+
   it('excludes lost files from the available totals and counts them separately', async () => {
     const { api, queue, prisma } = await setup();
     const parent = (await api.post('/api/folders', { name: 'Parent' })).body.folder;

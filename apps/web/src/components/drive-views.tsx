@@ -4,7 +4,7 @@ import { useIsTouch, useLongPress } from '@/lib/pointer';
 import { downloadFile } from '@/lib/files';
 import type { FileDto, FolderDto } from '@pocketverse/shared';
 import { RowActions, type RowAction } from '@/components/row-actions';
-import { StatusBadge, formatSize } from '@/components/ui';
+import { FolderSyncBadge, StatusBadge, formatSize } from '@/components/ui';
 import {
   DownloadIcon,
   FolderIcon,
@@ -213,7 +213,13 @@ export function FolderRow({ folder, view }: { folder: FolderDto; view: ViewProps
       </span>
       <span className="pv-row-main">
         <span className="pv-row-name">{folder.name}</span>
-        <span className="pv-row-meta">Folder</span>
+        <span
+          className="pv-row-meta"
+          style={{ display: 'flex', gap: 'var(--pv-s2)', alignItems: 'center' }}
+        >
+          Folder
+          <FolderSyncBadge count={folder.syncingCount} />
+        </span>
       </span>
       {deleting ? <DeletingMark /> : folderActions(folder, view)}
     </li>
@@ -297,6 +303,7 @@ export function FolderCard({ folder, view }: { folder: FolderDto; view: ViewProp
       <span className="pv-row-name" style={{ fontWeight: 500 }}>
         {folder.name}
       </span>
+      <FolderSyncBadge count={folder.syncingCount} />
       {deleting ? <DeletingMark /> : folderActions(folder, view)}
     </div>
   );

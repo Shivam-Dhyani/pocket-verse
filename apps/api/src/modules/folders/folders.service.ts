@@ -277,14 +277,66 @@ export function createFoldersService({ prisma, queue, audit, stagingDir }: Folde
           : Promise.resolve(null),
       ]);
 
+      const syncing = await syncingCountsFor(
+        userId,
+        folders.map((folder) => folder.id),
+      );
+
       return {
         breadcrumb,
         currentFolder,
-        folders: folders.map(toFolderDto),
+        folders: folders.map((folder) => ({
+          ...toFolderDto(folder),
+          syncingCount: syncing.get(folder.id) ?? 0,
+        })),
         files: files.map((file) => toFileDto(file, file.chunks)),
       };
     },
   };
+
+  /**
+   * For each listed folder, how many files anywhere inside it are still
+   * uploading/syncing — so a folder mid-upload can say so while staying
+   * openable. One query for the account's in-flight files; only if there are
+   * any, one more for the folder tree, walked upwards in memory. The listed
+   * folders are siblings, so each file counts toward at most one of them.
+   * Failed (ERROR) and LOST files aren't "in progress" and don't count.
+   */
+  async function syncingCountsFor(
+    userId: string,
+    folderIds: string[],
+  ): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    if (folderIds.length === 0) {
+      return counts;
+    }
+    const inFlight = await prisma.file.findMany({
+      where: { ownerId: userId, status: 'UPLOADING' },
+      select: { folderId: true },
+    });
+    const nested = inFlight.filter((file) => file.folderId !== null);
+    if (nested.length === 0) {
+      return counts;
+    }
+    const tree = await prisma.folder.findMany({
+      where: { ownerId: userId },
+      select: { id: true, parentId: true },
+    });
+    const parentOf = new Map(tree.map((folder) => [folder.id, folder.parentId]));
+    const listed = new Set(folderIds);
+    for (const { folderId } of nested) {
+      let current: string | null | undefined = folderId;
+      // Depth guard: the tree is cycle-proof by construction, but never loop forever.
+      for (let depth = 0; current && depth < 1000; depth += 1) {
+        if (listed.has(current)) {
+          counts.set(current, (counts.get(current) ?? 0) + 1);
+          break;
+        }
+        current = parentOf.get(current);
+      }
+    }
+    return counts;
+  }
 
   /**
    * Recursive totals for a folder and all its descendants. `totalBytes` and

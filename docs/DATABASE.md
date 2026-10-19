@@ -3,7 +3,7 @@
   Regenerate/update whenever apps/api/prisma/schema.prisma OR any API route
   changes. See "Maintaining this document" at the bottom, or run the
   `db-architecture-doc` skill (.claude/skills/db-architecture-doc).
-  Last verified against schema + routes: 2026-10 (upload prewarm in createUpload; no table changes).
+  Last verified against schema + routes: 2026-10 (drive listing: per-folder syncingCount; no table changes).
 -->
 
 # Pocketverse — Database & Backend Architecture
@@ -185,16 +185,16 @@ Constraints: `@@unique([ownerId, parentId, name])` (no dup names in a folder),
 
 **APIs that touch this table**
 
-| Endpoint                                | Service                               | Access                                                                                          |
-| --------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `POST /api/folders`                     | `folders.service.createFolder`        | creates                                                                                         |
-| `POST /api/folders/ensure-path`         | `folders.service.ensureFolderPath`    | get-or-create each segment; returns `createdIds`                                                |
-| `PATCH /api/folders/:id`                | `folders.service.updateFolder`        | rename/move (cycle-checked)                                                                     |
-| `DELETE /api/folders/:id`               | `folders.service.deleteFolder`        | recursive delete (+ audit tree)                                                                 |
-| `DELETE /api/folders/:id?onlyIfEmpty=1` | `folders.service.deleteFolderIfEmpty` | delete only if no files (cancel cleanup)                                                        |
-| `GET /api/drive`                        | `folders.service.listDrive`           | reads (listing + subtree totals; LOST excluded from size/count, reported as `unavailableCount`) |
-| `GET /api/files/zip?token=`             | `files.service.prepareZip`            | reads subtrees to mirror structure in zip                                                       |
-| `GET /api/stats`                        | stats router                          | counts folders; file count + bytes exclude `LOST` (available storage only)                      |
+| Endpoint                                | Service                               | Access                                                                                                                                                                                                               |
+| --------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/folders`                     | `folders.service.createFolder`        | creates                                                                                                                                                                                                              |
+| `POST /api/folders/ensure-path`         | `folders.service.ensureFolderPath`    | get-or-create each segment; returns `createdIds`                                                                                                                                                                     |
+| `PATCH /api/folders/:id`                | `folders.service.updateFolder`        | rename/move (cycle-checked)                                                                                                                                                                                          |
+| `DELETE /api/folders/:id`               | `folders.service.deleteFolder`        | recursive delete (+ audit tree)                                                                                                                                                                                      |
+| `DELETE /api/folders/:id?onlyIfEmpty=1` | `folders.service.deleteFolderIfEmpty` | delete only if no files (cancel cleanup)                                                                                                                                                                             |
+| `GET /api/drive`                        | `folders.service.listDrive`           | reads (listing + subtree totals; LOST excluded from size/count, reported as `unavailableCount`); reads the whole folder tree to give each listed folder a `syncingCount` (only when the account has in-flight files) |
+| `GET /api/files/zip?token=`             | `files.service.prepareZip`            | reads subtrees to mirror structure in zip                                                                                                                                                                            |
+| `GET /api/stats`                        | stats router                          | counts folders; file count + bytes exclude `LOST` (available storage only)                                                                                                                                           |
 
 ---
 
@@ -218,20 +218,20 @@ Indexes: `@@index([ownerId, folderId])`, `@@index([ownerId, name])` (search).
 
 **APIs that touch this table**
 
-| Endpoint                             | Service                             | Access                                                                                         |
-| ------------------------------------ | ----------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `POST /api/files/uploads`            | `files.service.createUpload`        | creates File (+ chunks + session)                                                              |
-| `GET /api/files/:id`                 | `files.service.getFile`             | reads                                                                                          |
-| `GET /api/files/search?q=`           | `files.service.search`              | reads by name                                                                                  |
-| `GET /api/files/:id/download`        | `files.service.download`            | reads; pre-flight verify, marks `LOST` if data is gone                                         |
-| `POST /api/files/zip-token`          | `files.service.prepareZip`          | reads (validates selection + size cap)                                                         |
-| `GET /api/files/zip?token=`          | `files.service.prepareZip`          | reads; streams the selection as one zip                                                        |
-| `POST /api/files/:id/download-token` | `files.service.getDownloadableFile` | reads (ownership + readiness gate)                                                             |
-| `PATCH /api/files/:id`               | `files.service.updateFile`          | rename/move                                                                                    |
-| `DELETE /api/files/:id`              | `files.service.deleteFile`          | deletes (+ storage cleanup)                                                                    |
-| `POST /api/files/retry-failed`       | `files.service.retryFailed`         | reads ERROR files; retriable → `UPLOADING`; a fully-stored one → verify → `LOST`/`READY`       |
-| `GET /api/drive`, `GET /api/stats`   | listing / aggregate                 | reads / counts (both exclude `LOST` from size + file totals; drive reports `unavailableCount`) |
-| _(worker)_ `chunk-upload`            | `storage.worker`                    | flips to `READY` (or `ERROR`)                                                                  |
+| Endpoint                             | Service                             | Access                                                                                                                                                                         |
+| ------------------------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/files/uploads`            | `files.service.createUpload`        | creates File (+ chunks + session)                                                                                                                                              |
+| `GET /api/files/:id`                 | `files.service.getFile`             | reads                                                                                                                                                                          |
+| `GET /api/files/search?q=`           | `files.service.search`              | reads by name                                                                                                                                                                  |
+| `GET /api/files/:id/download`        | `files.service.download`            | reads; pre-flight verify, marks `LOST` if data is gone                                                                                                                         |
+| `POST /api/files/zip-token`          | `files.service.prepareZip`          | reads (validates selection + size cap)                                                                                                                                         |
+| `GET /api/files/zip?token=`          | `files.service.prepareZip`          | reads; streams the selection as one zip                                                                                                                                        |
+| `POST /api/files/:id/download-token` | `files.service.getDownloadableFile` | reads (ownership + readiness gate)                                                                                                                                             |
+| `PATCH /api/files/:id`               | `files.service.updateFile`          | rename/move                                                                                                                                                                    |
+| `DELETE /api/files/:id`              | `files.service.deleteFile`          | deletes (+ storage cleanup)                                                                                                                                                    |
+| `POST /api/files/retry-failed`       | `files.service.retryFailed`         | reads ERROR files; retriable → `UPLOADING`; a fully-stored one → verify → `LOST`/`READY`                                                                                       |
+| `GET /api/drive`, `GET /api/stats`   | listing / aggregate                 | reads / counts (both exclude `LOST` from size + file totals; drive reports `unavailableCount`, and each listed folder's `syncingCount` = `UPLOADING` files anywhere inside it) |
+| _(worker)_ `chunk-upload`            | `storage.worker`                    | flips to `READY` (or `ERROR`)                                                                                                                                                  |
 
 ---
 

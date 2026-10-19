@@ -93,6 +93,9 @@ export const folderDtoSchema = z.object({
   name: z.string(),
   parentId: z.string().nullable(),
   createdAt: z.string().datetime(),
+  /** Drive listings only: files anywhere inside this folder still uploading /
+   *  syncing to storage. 0 once everything inside has landed. */
+  syncingCount: z.number().int().optional(),
 });
 
 export const breadcrumbSchema = z.array(z.object({ id: z.string(), name: z.string() }));
